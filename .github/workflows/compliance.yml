@@ -50,6 +50,12 @@ jobs:
           grep -q "\-\-ink" "$CSS_FILE"
           grep -q "\-\-accent" "$CSS_FILE"
 
+      - name: HTML meta tags
+        run: |
+          grep -q 'lang=' web/index.html
+          grep -q 'viewport' web/index.html
+          grep -q '<title>' web/index.html
+
       - name: PWA manifest
         run: find web/public -name "manifest.json" | grep -q .
 
