@@ -57,7 +57,16 @@ jobs:
           grep -q '<title>' web/index.html
 
       - name: PWA manifest
-        run: find web/public -name "manifest.json" | grep -q .
+        run: |
+          MANIFEST=$(find web/public -name "manifest.json" | head -1)
+          test -n "$MANIFEST"
+          grep -q "name" "$MANIFEST"
+          grep -q "display" "$MANIFEST"
+          grep -q "start_url" "$MANIFEST"
+
+      - name: PWA meta tags
+        run: |
+          grep -qi "apple-mobile-web-app-capable\|mobile-web-app-capable" web/index.html
 
       - name: FreeAppStore link
         run: grep -r "freeappstore.online" web/src/ | grep -q .
