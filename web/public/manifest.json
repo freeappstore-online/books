@@ -1,0 +1,8 @@
+{
+  "name": "Books",
+  "short_name": "Books",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#c08552"
+}
