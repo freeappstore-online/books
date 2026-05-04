@@ -45,3 +45,6 @@ body {
 .display-font {
   font-family: "Fraunces", serif;
 }
+
+/* Platform compliance: color-scheme declaration */
+:root { color-scheme: light dark; }
