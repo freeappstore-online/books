@@ -146,6 +146,12 @@ export default function Library({ onSelectBook }: LibraryProps) {
             ))}
           </div>
         </section>
+
+        <div className="pt-8 pb-4 text-center">
+          <a href="https://freeappstore.online" target="_blank" rel="noopener" className="text-[11px] font-medium text-warm-800/40 dark:text-warm-100/40 hover:text-warm-800 dark:hover:text-warm-100 transition-colors">
+            Part of FreeAppStore — free forever
+          </a>
+        </div>
       </main>
     </div>
   )
