@@ -4,5 +4,7 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
-  "theme_color": "#c08552"
+  "theme_color": "#c08552",
+  "orientation": "any",
+  "min_viewport_width": 360
 }
