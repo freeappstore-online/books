@@ -6,11 +6,18 @@
     "node": ">=20.19.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "scripts": {
     "dev": "pnpm --filter @freebooksapp/web dev",
     "build": "pnpm --filter @freebooksapp/web build",
-    "preview": "pnpm --filter @freebooksapp/web preview"
+    "preview": "pnpm --filter @freebooksapp/web preview",
+    "test": "pnpm --filter @books/web exec tsc -b"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freeappstore-online/books.git"
   }
 }
