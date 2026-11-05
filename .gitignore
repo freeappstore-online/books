@@ -9,3 +9,4 @@ playwright-report/
 screencheck-out/
 test-results/
 .playwright-mcp/
+*.tsbuildinfo
