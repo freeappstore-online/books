@@ -1,34 +1,43 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { kokoroStreamPlay, getSavedKokoroVoice, saveKokoroVoice, isMobileDevice } from './useKokoro'
 
-export interface TTSState {
-  isPlaying: boolean
-  rate: number
-  voice: SpeechSynthesisVoice | null
-  voices: SpeechSynthesisVoice[]
-  currentParagraph: number
+export type TtsEngine = 'browser' | 'kokoro'
+
+const RATE_KEY = 'freebooks-tts-rate'
+const VOICE_KEY = 'freebooks-tts-voice'
+const ENGINE_KEY = 'freebooks-tts-engine'
+
+function loadEngine(): TtsEngine {
+  try {
+    return localStorage.getItem(ENGINE_KEY) === 'kokoro' && !isMobileDevice() ? 'kokoro' : 'browser'
+  } catch { return 'browser' }
 }
 
-export function useTTS(paragraphs: string[]) {
+export function useTTS(paragraphs: string[], initialParagraph = 0) {
   const [isPlaying, setIsPlaying] = useState(false)
-  const [rate, setRate] = useState(() => {
-    const saved = localStorage.getItem('freebooks-tts-rate')
-    return saved ? parseFloat(saved) : 1
-  })
+  const [rate, setRate] = useState(() => parseFloat(localStorage.getItem(RATE_KEY) || '') || 1)
   const [voice, setVoice] = useState<SpeechSynthesisVoice | null>(null)
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [currentParagraph, setCurrentParagraph] = useState(0)
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
-  const paragraphsRef = useRef(paragraphs)
-  const isPlayingRef = useRef(false)
+  const [engine, setEngine] = useState<TtsEngine>(loadEngine)
+  const [kokoroVoice, setKokoroVoice] = useState(getSavedKokoroVoice)
+  const [currentParagraph, setCurrentParagraph] = useState(initialParagraph)
 
+  const paragraphsRef = useRef(paragraphs)
   paragraphsRef.current = paragraphs
+  // Read at start time, and written directly by the change handlers, so a restart
+  // mid-playback picks up the new setting rather than a stale closure.
+  const settingsRef = useRef({ rate, voice, engine, kokoroVoice })
+  settingsRef.current = { rate, voice, engine, kokoroVoice }
+  // Bumped on every halt so callbacks from an earlier run are ignored.
+  const runRef = useRef(0)
+  const kokoroRef = useRef<{ stop: () => void } | null>(null)
 
   useEffect(() => {
     const loadVoices = () => {
       const available = speechSynthesis.getVoices()
       if (available.length > 0) {
         setVoices(available)
-        const savedVoiceName = localStorage.getItem('freebooks-tts-voice')
+        const savedVoiceName = localStorage.getItem(VOICE_KEY)
         const savedVoice = savedVoiceName
           ? available.find(v => v.name === savedVoiceName)
           : null
@@ -41,112 +50,117 @@ export function useTTS(paragraphs: string[]) {
     return () => speechSynthesis.removeEventListener('voiceschanged', loadVoices)
   }, [])
 
-  const stop = useCallback(() => {
+  const halt = useCallback(() => {
+    runRef.current++
     speechSynthesis.cancel()
-    isPlayingRef.current = false
-    setIsPlaying(false)
+    kokoroRef.current?.stop()
+    kokoroRef.current = null
   }, [])
 
-  const speakParagraph = useCallback((index: number) => {
-    if (index >= paragraphsRef.current.length) {
-      isPlayingRef.current = false
-      setIsPlaying(false)
-      return
-    }
-
-    const text = paragraphsRef.current[index]
-    if (!text.trim()) {
-      // Skip empty paragraphs
-      setCurrentParagraph(index + 1)
-      speakParagraph(index + 1)
-      return
-    }
-
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = rate
-    if (voice) utterance.voice = voice
-    utterance.onend = () => {
-      if (isPlayingRef.current) {
-        const next = index + 1
-        setCurrentParagraph(next)
-        speakParagraph(next)
-      }
-    }
-    utterance.onerror = (e) => {
-      if (e.error !== 'canceled') {
-        isPlayingRef.current = false
-        setIsPlaying(false)
-      }
-    }
-    utteranceRef.current = utterance
+  const start = useCallback((index: number) => {
+    halt()
+    const run = runRef.current
+    const live = () => run === runRef.current
+    const end = () => { if (live()) setIsPlaying(false) }
+    setIsPlaying(true)
     setCurrentParagraph(index)
-    speechSynthesis.speak(utterance)
-  }, [rate, voice])
+    const { rate, voice, engine, kokoroVoice } = settingsRef.current
+
+    if (engine === 'kokoro') {
+      kokoroStreamPlay(
+        paragraphsRef.current, index, kokoroVoice, rate,
+        i => { if (live()) setCurrentParagraph(i) },
+        end,
+        err => { console.error('[Kokoro]', err); end() },
+      )
+        .then(h => { if (live()) kokoroRef.current = h; else h.stop() })
+        .catch(err => { console.error('[Kokoro]', err); end() })
+      return
+    }
+
+    const speak = (i: number) => {
+      if (!live()) return
+      const ps = paragraphsRef.current
+      while (i < ps.length && !ps[i].trim()) i++
+      if (i >= ps.length) { end(); return }
+      setCurrentParagraph(i)
+      const utterance = new SpeechSynthesisUtterance(ps[i])
+      utterance.rate = rate
+      if (voice) utterance.voice = voice
+      utterance.onend = () => speak(i + 1)
+      utterance.onerror = (e) => {
+        if (e.error !== 'canceled' && e.error !== 'interrupted') end()
+      }
+      speechSynthesis.speak(utterance)
+    }
+    speak(index)
+  }, [halt])
 
   const play = useCallback((fromParagraph?: number) => {
-    speechSynthesis.cancel()
-    const startAt = fromParagraph ?? currentParagraph
-    isPlayingRef.current = true
-    setIsPlaying(true)
-    speakParagraph(startAt)
-  }, [currentParagraph, speakParagraph])
+    start(fromParagraph ?? currentParagraph)
+  }, [start, currentParagraph])
 
   const pause = useCallback(() => {
-    speechSynthesis.cancel()
-    isPlayingRef.current = false
+    halt()
     setIsPlaying(false)
-  }, [])
+  }, [halt])
 
   const toggle = useCallback(() => {
-    if (isPlaying) {
-      pause()
-    } else {
-      play()
-    }
+    if (isPlaying) pause()
+    else play()
   }, [isPlaying, play, pause])
+
+  const restartIfPlaying = useCallback(() => {
+    if (isPlaying) start(currentParagraph)
+  }, [isPlaying, start, currentParagraph])
 
   const changeRate = useCallback((newRate: number) => {
     setRate(newRate)
-    localStorage.setItem('freebooks-tts-rate', String(newRate))
-    if (isPlayingRef.current) {
-      speechSynthesis.cancel()
-      isPlayingRef.current = true
-      setIsPlaying(true)
-      speakParagraph(currentParagraph)
-    }
-  }, [currentParagraph, speakParagraph])
+    settingsRef.current.rate = newRate
+    localStorage.setItem(RATE_KEY, String(newRate))
+    restartIfPlaying()
+  }, [restartIfPlaying])
 
   const changeVoice = useCallback((newVoice: SpeechSynthesisVoice) => {
     setVoice(newVoice)
-    localStorage.setItem('freebooks-tts-voice', newVoice.name)
-    if (isPlayingRef.current) {
-      speechSynthesis.cancel()
-      isPlayingRef.current = true
-      setIsPlaying(true)
-      // speakParagraph will pick up the new voice on next render
-      setTimeout(() => speakParagraph(currentParagraph), 50)
-    }
-  }, [currentParagraph, speakParagraph])
+    settingsRef.current.voice = newVoice
+    localStorage.setItem(VOICE_KEY, newVoice.name)
+    restartIfPlaying()
+  }, [restartIfPlaying])
+
+  const changeEngine = useCallback((newEngine: TtsEngine) => {
+    setEngine(newEngine)
+    settingsRef.current.engine = newEngine
+    localStorage.setItem(ENGINE_KEY, newEngine)
+    restartIfPlaying()
+  }, [restartIfPlaying])
+
+  const changeKokoroVoice = useCallback((id: string) => {
+    setKokoroVoice(id)
+    settingsRef.current.kokoroVoice = id
+    saveKokoroVoice(id)
+    restartIfPlaying()
+  }, [restartIfPlaying])
 
   // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      speechSynthesis.cancel()
-    }
-  }, [])
+  useEffect(() => halt, [halt])
 
   return {
     isPlaying,
     rate,
     voice,
     voices,
+    engine,
+    kokoroVoice,
     currentParagraph,
     setCurrentParagraph,
     play,
     pause,
     toggle,
-    stop,
+    stop: pause,
     changeRate,
     changeVoice,
+    changeEngine,
+    changeKokoroVoice,
   }
 }

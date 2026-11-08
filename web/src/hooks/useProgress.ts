@@ -5,7 +5,8 @@ const STORAGE_KEY = 'freebooks-progress'
 export interface ReadingProgress {
   bookId: string
   chapter: number
-  scrollPosition: number
+  /** Index of the paragraph the reader was on (top of screen, or being read aloud). */
+  paragraph: number
   lastRead: number
 }
 
@@ -24,11 +25,12 @@ function saveAll(data: Record<string, ReadingProgress>) {
 export function useProgress(bookId: string) {
   const [progress, setProgress] = useState<ReadingProgress>(() => {
     const all = loadAll()
-    return all[bookId] || { bookId, chapter: 0, scrollPosition: 0, lastRead: Date.now() }
+    const saved = all[bookId]
+    return { bookId, chapter: saved?.chapter ?? 0, paragraph: saved?.paragraph ?? 0, lastRead: saved?.lastRead ?? Date.now() }
   })
 
-  const updateProgress = useCallback((chapter: number, scrollPosition = 0) => {
-    const updated: ReadingProgress = { bookId, chapter, scrollPosition, lastRead: Date.now() }
+  const updateProgress = useCallback((chapter: number, paragraph = 0) => {
+    const updated: ReadingProgress = { bookId, chapter, paragraph, lastRead: Date.now() }
     setProgress(updated)
     const all = loadAll()
     all[bookId] = updated

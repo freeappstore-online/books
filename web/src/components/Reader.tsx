@@ -21,7 +21,7 @@ export default function Reader({ book, onBack }: ReaderProps) {
   const { progress, updateProgress } = useProgress(book.id)
   const [currentChapter, setCurrentChapter] = useState(progress.chapter)
   const [showChapterList, setShowChapterList] = useState(false)
-  const contentRef = useRef<HTMLDivElement>(null)
+  const restoredRef = useRef(false)
 
   // Load book content
   useEffect(() => {
@@ -45,14 +45,15 @@ export default function Reader({ book, onBack }: ReaderProps) {
   // Get paragraphs from current chapter
   const paragraphs = chapters[currentChapter]?.content.split('\n').filter(p => p.trim()) || []
 
-  const tts = useTTS(paragraphs)
+  const tts = useTTS(paragraphs, progress.paragraph)
+  const { isPlaying, currentParagraph, setCurrentParagraph } = tts
 
   const goToChapter = useCallback((index: number) => {
     tts.stop()
     setCurrentChapter(index)
     updateProgress(index)
     tts.setCurrentParagraph(0)
-    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0 })
   }, [tts, updateProgress])
 
   const prevChapter = useCallback(() => {
@@ -63,12 +64,49 @@ export default function Reader({ book, onBack }: ReaderProps) {
     if (currentChapter < chapters.length - 1) goToChapter(currentChapter + 1)
   }, [currentChapter, chapters.length, goToChapter])
 
-  // Save progress when chapter changes
+  // Save chapter + paragraph so reopening the book lands where the reader left off
   useEffect(() => {
     if (chapters.length > 0) {
-      updateProgress(currentChapter)
+      updateProgress(currentChapter, currentParagraph)
     }
-  }, [currentChapter, chapters.length, updateProgress])
+  }, [currentChapter, currentParagraph, chapters.length, updateProgress])
+
+  // On first load, scroll to the saved paragraph
+  useEffect(() => {
+    if (loading || restoredRef.current) return
+    restoredRef.current = true
+    if (progress.paragraph > 0) {
+      document.querySelector(`[data-p="${progress.paragraph}"]`)?.scrollIntoView({ block: 'start' })
+    }
+  }, [loading, progress.paragraph])
+
+  // While reading (not listening), the paragraph at the top of the screen is the position
+  useEffect(() => {
+    if (loading || isPlaying) return
+    let frame = 0
+    const onScroll = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-p]'))) {
+          if (el.getBoundingClientRect().bottom > 80) {
+            setCurrentParagraph(Number(el.dataset.p))
+            return
+          }
+        }
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      cancelAnimationFrame(frame)
+    }
+  }, [loading, isPlaying, setCurrentParagraph])
+
+  // While listening, keep the paragraph being read on screen
+  useEffect(() => {
+    if (!isPlaying) return
+    document.querySelector(`[data-p="${currentParagraph}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [isPlaying, currentParagraph])
 
   if (loading) {
     return (
@@ -154,7 +192,7 @@ export default function Reader({ book, onBack }: ReaderProps) {
       )}
 
       {/* Content */}
-      <main ref={contentRef} className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-32">
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-32">
         {chapters[currentChapter] && (
           <>
             <h2 className="text-lg font-bold text-warm-800 dark:text-warm-100 mb-6">
@@ -164,7 +202,8 @@ export default function Reader({ book, onBack }: ReaderProps) {
               {paragraphs.map((p, i) => (
                 <p
                   key={i}
-                  className={`text-sm leading-relaxed transition-colors cursor-pointer ${
+                  data-p={i}
+                  className={`scroll-mt-20 text-sm leading-relaxed transition-colors cursor-pointer ${
                     tts.isPlaying && i === tts.currentParagraph
                       ? 'text-warm-800 dark:text-warm-100 bg-warm-200/50 dark:bg-warm-800/30 -mx-2 px-2 py-1 rounded'
                       : 'text-warm-800/80 dark:text-warm-100/80'
@@ -208,6 +247,8 @@ export default function Reader({ book, onBack }: ReaderProps) {
         rate={tts.rate}
         voice={tts.voice}
         voices={tts.voices}
+        engine={tts.engine}
+        kokoroVoice={tts.kokoroVoice}
         currentChapter={currentChapter}
         totalChapters={chapters.length}
         bookTitle={book.title}
@@ -216,6 +257,8 @@ export default function Reader({ book, onBack }: ReaderProps) {
         onNextChapter={nextChapter}
         onChangeRate={tts.changeRate}
         onChangeVoice={tts.changeVoice}
+        onChangeEngine={tts.changeEngine}
+        onChangeKokoroVoice={tts.changeKokoroVoice}
       />
     </div>
   )
