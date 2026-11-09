@@ -286,6 +286,28 @@ test.describe('storage notes', () => {
   })
 })
 
+test('first visit: Google Fonts are cached once the service worker takes over, for offline (books#26)', async ({ context, baseURL, page }) => {
+  await stubHuggingFace(context, baseURL!)
+  // Stand-ins for Google Fonts, in its format: one subset per comment. Without a family name
+  // the page itself never loads them, so only the app's own warm-up can cache them
+  const font = (family: string, subset: string) => `https://fonts.gstatic.com/s/${family}/${subset}.woff2`
+  await context.route(/^https:\/\/fonts\.googleapis\.com\//, route => {
+    const family = /family=(\w+)/.exec(route.request().url())![1].toLowerCase()
+    const subsets = { cyrillic: 'U+0400-045F', 'latin-ext': 'U+0100-02BA', latin: 'U+0000-00FF' }
+    const body = Object.entries(subsets).map(([s, range]) =>
+      `/* ${s} */\n@font-face {\n  src: url(${font(family, s)}) format('woff2');\n  unicode-range: ${range};\n}\n`).join('')
+    return route.fulfill({ headers: { 'access-control-allow-origin': '*' }, contentType: 'text/css', body })
+  })
+  await context.route(/^https:\/\/fonts\.gstatic\.com\//, route =>
+    route.fulfill({ headers: { 'access-control-allow-origin': '*' }, contentType: 'font/woff2', body: Buffer.from('wOF2') }))
+
+  await swReady(page)
+  const cached = (name: string) => page.evaluate(async n => (await (await caches.open(n)).keys()).map(r => r.url).sort(), name)
+  await expect.poll(() => cached('fas-font-files-v1'), { message: 'latin font files cached' })
+    .toEqual([font('fraunces', 'latin'), font('manrope', 'latin')])
+  expect((await cached('fas-font-styles-v1')).length, 'both stylesheets cached').toBe(2)
+})
+
 test('a new build: toast while playing, playback carries on, Reload loads it', async ({ context, baseURL, page }) => {
   await stubHuggingFace(context, baseURL!, { durations: narrated() })
   await swReady(page)

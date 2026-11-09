@@ -6,8 +6,10 @@ import { AudioPlayerProvider } from './hooks/useAudioPlayer'
 import { App } from './App'
 import './index.css'
 import { applyUiScale, getUiScale } from './hooks/usePreferences'
+import { warmFontCacheOnFirstControl } from './hooks/fontCache'
 
 applyUiScale(getUiScale())
+if (import.meta.env.PROD) warmFontCacheOnFirstControl()
 
 // Free the storage of the in-browser voice generation removed in books#23: its
 // generated chapters (IndexedDB) and the ~160 MB model (Cache Storage)
