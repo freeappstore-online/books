@@ -10,7 +10,8 @@ import { BookSearch, SEARCH_INPUT_ID } from '../components/BookSearch'
 import type { SearchHit } from '../hooks/bookSearch'
 import { useReaderFontSize } from '../hooks/usePreferences'
 import { TextSizeControls } from '../components/TextSizeControls'
-import { saveProgress, getProgress } from '../hooks/useReadingProgress'
+import { saveProgress, getProgress, setFinished, useFinished } from '../hooks/useReadingProgress'
+import { TimeLeft } from '../components/TimeLeft'
 import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
 import { CATALOG } from '../data/catalog'
 import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
@@ -40,6 +41,9 @@ export function ReaderPage() {
   const [searchHit, setSearchHit] = useState<SearchHit | null>(null)
   // Chapter offset to scroll to once the chapter shows (search, bookmarks)
   const [focus, setFocus] = useState<{ offset: number } | null>(null)
+  // How far down the chapter on screen the reader is, 0–1 (for the time left)
+  const [chapterScroll, setChapterScroll] = useState(0)
+  const finished = useFinished()
 
   const player = useAudioPlayer()
   const articleRef = useRef<HTMLElement>(null)
@@ -50,6 +54,13 @@ export function ReaderPage() {
     if (!slug) return
     loadBook(slug)
   }, [slug])
+
+  // Where each chapter starts in the whole text, and the total, for the share of the book read
+  const chapterStarts = useMemo(() => {
+    const starts = [0]
+    for (const c of chapters) starts.push(starts[starts.length - 1] + c.content.length)
+    return starts
+  }, [chapters])
 
   // Save reading progress: chapter, plus how far down it the reader has scrolled
   useEffect(() => {
@@ -62,6 +73,13 @@ export function ReaderPage() {
       const top = el.getBoundingClientRect().top + window.scrollY
       return Math.min(1, Math.max(0, (window.scrollY - top) / el.offsetHeight))
     }
+    const save = () => {
+      const scroll = scrollFraction()
+      const total = chapterStarts[chapterStarts.length - 1]
+      const fraction = total > 0 ? (chapterStarts[idx] + scroll * chapters[idx].content.length) / total : 0
+      saveProgress(slug, idx, chapters.length, scroll, fraction)
+      setChapterScroll(scroll)
+    }
     // Restore the saved position once, on the chapter it was saved for
     const article = articleRef.current
     if (pendingScrollRef.current > 0 && article) {
@@ -69,18 +87,18 @@ export function ReaderPage() {
       window.scrollTo(0, top + pendingScrollRef.current * article.offsetHeight)
       pendingScrollRef.current = 0
     }
-    saveProgress(slug, idx, chapters.length, scrollFraction())
+    save()
     let timer: ReturnType<typeof setTimeout> | undefined
     const onScroll = () => {
       clearTimeout(timer)
-      timer = setTimeout(() => saveProgress(slug, idx, chapters.length, scrollFraction()), 300)
+      timer = setTimeout(save, 300)
     }
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => {
       clearTimeout(timer)
       window.removeEventListener('scroll', onScroll)
     }
-  }, [slug, activeChapter, chapters.length, loading])
+  }, [slug, activeChapter, chapters, chapterStarts, loading])
 
   // Follow the player when its chapter changes (next/prev/auto-advance). Not on
   // activeChapter changes, so the reader can browse other chapters while it plays.
@@ -356,7 +374,8 @@ export function ReaderPage() {
         <main className={`${themeStyle.bg} ${themeStyle.text} rounded-xl p-4 md:p-8 transition-colors`}>
           {currentChapter ? (
             <article ref={articleRef}>
-              <h2 className="font-display mb-4 md:mb-6" style={{ fontSize: `${Math.round(fontSize * 1.35)}px` }}>{currentChapter.title}</h2>
+              <h2 className="font-display mb-1" style={{ fontSize: `${Math.round(fontSize * 1.35)}px` }}>{currentChapter.title}</h2>
+              <TimeLeft slug={slug || ''} chapters={chapters} chapterIdx={visibleChapterIdx} scroll={chapterScroll} />
               <ChapterText
                 content={currentChapter.content}
                 chapterIdx={visibleChapterIdx}
@@ -388,6 +407,14 @@ export function ReaderPage() {
                           className="text-text-muted hover:text-text transition text-sm max-w-[45%] truncate text-right"
                         >
                           {chapters[idx + 1].title} &rarr;
+                        </button>
+                      ) : slug && chapters.length > 1 ? (
+                        <button
+                          onClick={() => setFinished(slug, !finished[slug])}
+                          aria-pressed={Boolean(finished[slug])}
+                          className={`text-sm font-semibold transition ${finished[slug] ? 'text-success' : 'text-accent hover:text-accent-hover'}`}
+                        >
+                          {finished[slug] ? '✓ Finished' : 'Mark as finished'}
                         </button>
                       ) : <span />}
                     </>

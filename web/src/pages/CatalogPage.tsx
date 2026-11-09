@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom'
 import { CATALOG, GENRES, ALL_TAGS, type CatalogBook } from '../data/catalog'
 import { BookCover } from '../components/BookCover'
 import { NavBar } from '../components/NavBar'
-import { getAllProgress, getProgressPercent } from '../hooks/useReadingProgress'
-import { isNarrated } from '../hooks/preparedAudio'
+import { booksInProgress, progressPercent, useFinished, type BookProgress } from '../hooks/useReadingProgress'
+import { useAudioPlayer } from '../hooks/useAudioPlayer'
+import { ListenButton } from '../components/ListenButton'
+import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
 import { useOfflineBooks, useOnline, usePlayableManifest } from '../hooks/offlineBooks'
 
 export function CatalogPage() {
@@ -48,6 +50,15 @@ export function CatalogPage() {
     return books
   }, [entries, search, genre, tag, sort])
 
+  const player = useAudioPlayer()
+  const finished = useFinished()
+  // Listened shares need every narrated book's lengths, playable now or not
+  const fullManifest = usePreparedManifest()
+  const progress = useMemo(
+    () => new Map(booksInProgress(player.history, fullManifest, finished).map(p => [p.slug, p])),
+    [player.history, fullManifest, finished],
+  )
+
   const featured = entries.slice(0, 4)
   const audiobooks = entries.filter(e => e.narrated).slice(0, 4)
 
@@ -56,6 +67,8 @@ export function CatalogPage() {
       <NavBar />
 
       <main>
+      <ContinueShelf entries={entries} dim={dim} />
+
       <section className="px-4 md:px-6 py-10 md:py-16 max-w-6xl mx-auto">
         <div>
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-display leading-tight mb-3 md:mb-4">
@@ -123,40 +136,6 @@ export function CatalogPage() {
         </div>
       </section>
 
-      {!search && !genre && !tag && (() => {
-        const progress = getAllProgress()
-        const inProgress = CATALOG
-          .filter(b => progress[b.id] && progress[b.id].chapterIdx < progress[b.id].totalChapters - 1)
-          .sort((a, b) => (progress[b.id]?.lastRead || 0) - (progress[a.id]?.lastRead || 0))
-          .slice(0, 4)
-        if (inProgress.length === 0) return null
-        return (
-          <section className="px-4 md:px-6 pb-8 md:pb-10 max-w-6xl mx-auto">
-            <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">Continue Reading</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-              {inProgress.map(book => {
-                const pct = getProgressPercent(book.id)
-                const narrated = entries.find(entry => entry.book.id === book.id)?.narrated
-                return (
-                  <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
-                    <BookCover book={book} size="lg" />
-                    <div className="mt-2 flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="h-1 bg-surface-hover rounded-full overflow-hidden">
-                          <div className="h-full bg-accent rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
-                        <p className="mt-1 text-xs text-text-dim">{pct}% complete</p>
-                      </div>
-                      {narrated && <AudiobookPill />}
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
-        )
-      })()}
-
       {!search && !genre && !tag && audiobooks.length > 0 && (
         <section className="px-4 md:px-6 pb-10 md:pb-12 max-w-6xl mx-auto">
           <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">Audiobooks</h2>
@@ -197,7 +176,10 @@ export function CatalogPage() {
         </h2>
         <div className="grid gap-3 md:gap-4">
           {filtered.map(({ book, narrated }) => (
-            <BookListItem key={book.id} book={book} narrated={narrated} saved={Boolean(saved[book.id])} online={online} />
+            <BookListItem
+              key={book.id} book={book} narrated={narrated} saved={Boolean(saved[book.id])} online={online}
+              progress={progress.get(book.id)} finished={Boolean(finished[book.id])}
+            />
           ))}
           {filtered.length === 0 && (
             <p className="text-text-muted py-12 text-center">No books match your search.</p>
@@ -215,8 +197,10 @@ export function CatalogPage() {
   )
 }
 
-function BookListItem({ book, narrated, saved, online }: { book: CatalogBook; narrated: boolean; saved: boolean; online: boolean }) {
-  const pct = getProgressPercent(book.id)
+function BookListItem({ book, narrated, saved, online, progress, finished }: {
+  book: CatalogBook; narrated: boolean; saved: boolean; online: boolean; progress?: BookProgress; finished: boolean
+}) {
+  const pct = progress ? progressPercent(progress) : 0
 
   return (
     <Link
@@ -242,7 +226,7 @@ function BookListItem({ book, narrated, saved, online }: { book: CatalogBook; na
           <span className="text-[11px] md:text-xs text-text-dim ml-auto flex items-center gap-2">
             {saved && <span className="text-success">✓ Saved offline</span>}
             {!saved && !online && <span>Not saved: unavailable offline</span>}
-            {pct > 0 && pct < 100 && (
+            {!finished && pct > 0 && (
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block w-12 h-1 bg-surface-hover rounded-full overflow-hidden">
                   <span className="block h-full bg-accent rounded-full" style={{ width: `${pct}%` }} />
@@ -250,12 +234,53 @@ function BookListItem({ book, narrated, saved, online }: { book: CatalogBook; na
                 <span className="text-accent">{pct}%</span>
               </span>
             )}
-            {pct === 100 && <span className="text-accent">Done</span>}
+            {finished && <span className="text-success">✓ Finished</span>}
             {book.readTime}
           </span>
         </div>
       </div>
     </Link>
+  )
+}
+
+/** Books in progress, reading or listening, each resuming where it stopped (books#13). */
+function ContinueShelf({ entries, dim }: { entries: { book: CatalogBook; narrated: boolean }[]; dim: (id: string) => string }) {
+  const player = useAudioPlayer()
+  const manifest = usePreparedManifest()
+  const finished = useFinished()
+  const books = booksInProgress(player.history, manifest, finished)
+    .flatMap(p => {
+      const entry = entries.find(e => e.book.id === p.slug)
+      return entry ? [{ ...entry, progress: p }] : []
+    })
+    .slice(0, 4)
+  if (books.length === 0) return null
+
+  return (
+    <section aria-labelledby="continue-heading" className="px-4 md:px-6 pt-6 md:pt-8 max-w-6xl mx-auto">
+      <h2 id="continue-heading" className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4">Continue</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        {books.map(({ book, narrated, progress }) => {
+          const pct = progressPercent(progress)
+          return (
+            <div key={book.id} className={dim(book.id)}>
+              <Link to={`/read/${book.id}`} className="group block" aria-label={`Continue reading ${book.title}`}>
+                <BookCover book={book} size="lg" />
+              </Link>
+              <div className="mt-2 h-1 bg-surface-hover rounded-full overflow-hidden">
+                <div className="h-full bg-accent rounded-full" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <p className="text-xs text-text-dim">{pct}% · Ch {progress.chapterIdx + 1}/{book.chapters}</p>
+                {narrated && (
+                  <ListenButton book={book} className="shrink-0 rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-btn-text hover:bg-accent-hover transition" />
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

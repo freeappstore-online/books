@@ -4,8 +4,9 @@ import { NavBar } from '../components/NavBar'
 import { BookCover } from '../components/BookCover'
 import { CATALOG } from '../data/catalog'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
-import { getAllProgress } from '../hooks/useReadingProgress'
-import { usePreparedManifest } from '../hooks/preparedAudio'
+import { booksInProgress, progressPercent, setFinished, useFinished } from '../hooks/useReadingProgress'
+import { ListenButton } from '../components/ListenButton'
+import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
 import {
   checkSavedText, formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, updateReason,
   useOfflineBooks, useOnline,
@@ -29,29 +30,27 @@ export function LibraryPage() {
       <NavBar title="My books" />
 
       <main className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">
-        <SavedBooks />
         <InProgress />
+        <Finished />
+        <SavedBooks />
       </main>
     </div>
   )
 }
 
-/** Books with a reading or listening position, latest first. */
+/** Books with a reading or listening position, latest first (books#13). */
 function InProgress() {
   const { history } = useAudioPlayer()
-  const reading = getAllProgress()
-  const latest = new Map<string, { chapterIdx: number; at: number }>()
-  for (const [slug, p] of Object.entries(reading)) latest.set(slug, { chapterIdx: p.chapterIdx, at: p.lastRead })
-  for (const h of history) {
-    if (h.timestamp > (latest.get(h.slug)?.at ?? 0)) latest.set(h.slug, { chapterIdx: h.chapterIdx, at: h.timestamp })
-  }
-  const books = [...latest.entries()]
-    .map(([slug, p]) => ({ ...p, book: CATALOG.find(b => b.id === slug) }))
-    .filter(e => e.book)
-    .sort((a, b) => b.at - a.at)
+  const manifest = usePreparedManifest()
+  const finished = useFinished()
+  const books = booksInProgress(history, manifest, finished)
+    .flatMap(p => {
+      const book = CATALOG.find(b => b.id === p.slug)
+      return book ? [{ book, progress: p }] : []
+    })
 
   return (
-    <section className="bg-surface rounded-xl border border-border p-5 md:p-6">
+    <section className="bg-surface rounded-xl border border-border p-5 md:p-6 mb-6">
       <h2 className="text-lg font-display mb-3">In progress</h2>
       {books.length === 0 ? (
         <p className="text-sm text-text-muted">
@@ -59,20 +58,63 @@ function InProgress() {
         </p>
       ) : (
         <div className="divide-y divide-border">
-          {books.map(({ book, chapterIdx }) => (
-            <div key={book!.id} className="py-3 flex items-center gap-3">
-              <BookCover book={book!} size="sm" />
+          {books.map(({ book, progress }) => (
+            <div key={book.id} className="py-3 flex items-center gap-3">
+              <BookCover book={book} size="sm" />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{book!.title}</div>
-                <div className="text-xs text-text-dim mt-0.5">{book!.author} · Chapter {chapterIdx + 1} of {book!.chapters}</div>
+                <div className="text-sm font-medium truncate">{book.title}</div>
+                <div className="text-xs text-text-dim mt-0.5">{book.author} · Chapter {progress.chapterIdx + 1} of {book.chapters}</div>
+                <div className="mt-1.5 h-1 max-w-48 bg-surface-hover rounded-full overflow-hidden">
+                  <div className="h-full bg-accent rounded-full" style={{ width: `${progressPercent(progress)}%` }} />
+                </div>
+                <div className="text-xs text-text-dim mt-1">
+                  {Math.round(progress.read * 100)}% read
+                  {progress.listened !== null && ` · ${Math.round(progress.listened * 100)}% listened`}
+                </div>
+                <button onClick={() => setFinished(book.id, true)} className="mt-1 text-xs text-text-muted hover:text-text transition">
+                  Mark as finished
+                </button>
               </div>
-              <Link to={`/read/${book!.id}`} className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-btn-text hover:bg-accent-hover transition">
-                Resume
-              </Link>
+              <div className="shrink-0 flex flex-col items-end gap-2">
+                <Link to={`/read/${book.id}`} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-btn-text hover:bg-accent-hover transition">
+                  Resume
+                </Link>
+                {manifest && isNarrated(manifest, book.id) && (
+                  <ListenButton book={book} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-muted hover:text-text transition" />
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
+    </section>
+  )
+}
+
+/** Books marked finished, latest first. */
+function Finished() {
+  const finished = useFinished()
+  const books = Object.entries(finished)
+    .sort((a, b) => b[1] - a[1])
+    .flatMap(([slug]) => CATALOG.filter(b => b.id === slug))
+  if (books.length === 0) return null
+
+  return (
+    <section className="bg-surface rounded-xl border border-border p-5 md:p-6 mb-6">
+      <h2 className="text-lg font-display mb-3">Finished</h2>
+      <div className="divide-y divide-border">
+        {books.map(book => (
+          <div key={book.id} className="py-3 flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <Link to={`/read/${book.id}`} className="text-sm font-medium hover:text-accent transition">{book.title}</Link>
+              <div className="text-xs text-text-dim mt-0.5">{book.author}</div>
+            </div>
+            <button onClick={() => setFinished(book.id, false)} className="shrink-0 text-xs text-text-muted hover:text-text transition">
+              Not finished
+            </button>
+          </div>
+        ))}
+      </div>
     </section>
   )
 }
