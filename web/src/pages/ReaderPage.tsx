@@ -70,8 +70,11 @@ export function ReaderPage() {
   // Text selected in the chapter, offered for highlighting
   const [selection, setSelection] = useState<{ start: number; end: number; rect: DOMRect } | null>(null)
   const [editing, setEditing] = useState<Annotation | null>(null)
+  // Only the excerpt could be loaded (offline and not saved, or the fetch failed): its offsets
+  // aren't the book's, so it neither saves the reading position nor shows or makes annotations
+  const excerpt = activeChapter === 'excerpt'
   const allAnnotations = useAllAnnotations()
-  const annotations = useMemo(() => (slug && allAnnotations[slug]) || [], [allAnnotations, slug])
+  const annotations = useMemo(() => (slug && !excerpt && allAnnotations[slug]) || [], [allAnnotations, slug, excerpt])
 
   const player = useAudioPlayer()
   const articleRef = useRef<HTMLElement>(null)
@@ -92,7 +95,7 @@ export function ReaderPage() {
 
   // Save reading progress: chapter, plus how far down it the reader has scrolled
   useEffect(() => {
-    if (!slug || !activeChapter || chapters.length === 0) return
+    if (!slug || !activeChapter || excerpt || chapters.length === 0) return
     const idx = chapters.findIndex(c => c.id === activeChapter)
     if (idx < 0) return
     const scrollFraction = () => {
@@ -126,7 +129,7 @@ export function ReaderPage() {
       clearTimeout(timer)
       window.removeEventListener('scroll', onScroll)
     }
-  }, [slug, activeChapter, chapters, chapterStarts, loading])
+  }, [slug, activeChapter, excerpt, chapters, chapterStarts, loading])
 
   // Follow the player when its chapter changes (next/prev/auto-advance). Not on
   // activeChapter changes, so the reader can browse other chapters while it plays.
@@ -306,7 +309,7 @@ export function ReaderPage() {
   }, [])
 
   const addHighlight = (color: HighlightColor, withNote: boolean) => {
-    if (!slug || !selection || !currentChapter) return
+    if (!slug || !selection || !currentChapter || excerpt) return
     const text = currentChapter.content.slice(selection.start, selection.end).trim()
     const a = addAnnotation(slug, { kind: 'highlight', chapterIdx: visibleChapterIdx, start: selection.start, end: selection.end, color, text })
     window.getSelection()?.removeAllRanges()
@@ -316,7 +319,7 @@ export function ReaderPage() {
 
   /** Bookmark the listening position while this book plays, else the reading position. */
   const addBookmark = () => {
-    if (!slug || chapters.length === 0) return
+    if (!slug || chapters.length === 0 || excerpt) return
     const spoken = isThisBookPlaying && player.playing ? player.getReadAlong() : null
     let chapterIdx = visibleChapterIdx
     let offset = 0
@@ -465,7 +468,9 @@ export function ReaderPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={addBookmark}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-accent hover:bg-accent-hover text-btn-text transition"
+                  disabled={excerpt}
+                  title={excerpt ? 'Not in the excerpt: open the book online or save it offline' : undefined}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-accent hover:bg-accent-hover text-btn-text transition disabled:opacity-40"
                 >
                   <BookmarkIcon size={14} /> Bookmark this place
                 </button>
@@ -516,7 +521,7 @@ export function ReaderPage() {
         )}
       </div>
 
-      {selection && <HighlightToolbar rect={selection.rect} onHighlight={addHighlight} />}
+      {selection && !excerpt && <HighlightToolbar rect={selection.rect} onHighlight={addHighlight} />}
       {editing && slug && <AnnotationEditor slug={slug} annotation={editing} onClose={() => setEditing(null)} />}
 
       <SaveOfflineError slug={slug || ''} />
