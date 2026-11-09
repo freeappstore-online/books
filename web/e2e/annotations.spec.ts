@@ -45,6 +45,21 @@ test('two tabs: highlights and finished marks made in one show in the other, and
   expect(Object.keys(await stored(page, 'bp-finished')).sort()).toEqual([SLUG, 'dracula'])
 })
 
+test('highlights follow their text after it changed; one whose text is gone is listed, not drawn', async ({ page }) => {
+  const text = alice.chapters[0].content.slice(3000, 3030)
+  await page.goto('/')
+  await page.evaluate(notes => localStorage.setItem('bp-annotations', JSON.stringify(notes)), {
+    // Saved against a text 7 characters shorter before this point, and one against text that is gone
+    [SLUG]: [highlight('hl-moved', 0, 2993, 3023, text), highlight('hl-gone', 0, 4000, 4020, 'Words no longer in the book')],
+  })
+  await page.goto(`/read/${SLUG}`)
+  await page.waitForSelector('article h2')
+  await expect.poll(() => drawn(page)).toEqual([['hl-moved', text]])
+  await page.getByRole('button', { name: 'Bookmarks and notes' }).click()
+  await expect(page.getByRole('region', { name: 'Bookmarks and notes' }).getByRole('listitem')
+    .filter({ hasText: 'Words no longer in the book' })).toContainText('Text changed')
+})
+
 test('excerpt fallback keeps the reading position and shows or makes no annotations', async ({ context, page }) => {
   await page.goto('/')
   await page.evaluate(([progress, notes]) => {

@@ -27,6 +27,8 @@ export interface Annotation {
   /** The highlighted text, or the sentence a bookmark is at (its name) */
   text: string
   created: number
+  /** A highlight whose text is no longer in its chapter (the book's text changed): listed, not drawn */
+  stale?: boolean
 }
 
 type Store = Record<string, Annotation[]>
@@ -69,6 +71,32 @@ export function updateAnnotation(slug: string, id: string, patch: Partial<Pick<A
 
 export function removeAnnotation(slug: string, id: string) {
   update(slug, list => list.filter(a => a.id !== id))
+}
+
+/**
+ * Where a highlight's text is in `content`: its range if the text is still there, else the
+ * occurrence nearest its old offset (the text around it changed), else null (its own text changed).
+ */
+export function anchorHighlight(a: Annotation, content: string): [number, number] | null {
+  // Stored trimmed, from a selection that may take in spaces around it
+  if (content.slice(a.start, a.end).trim() === a.text) return [a.start, a.end]
+  if (!a.text) return null
+  let best = -1
+  for (let i = content.indexOf(a.text); i >= 0; i = content.indexOf(a.text, i + 1)) {
+    if (best < 0 || Math.abs(i - a.start) < Math.abs(best - a.start)) best = i
+  }
+  return best < 0 ? null : [best, best + a.text.length]
+}
+
+/** Move a book's highlights to where their text now is, and mark those whose text is gone (books#26). */
+export function reanchorAnnotations(slug: string, chapters: string[]) {
+  const move = (a: Annotation): Annotation => {
+    if (a.kind !== 'highlight' || a.chapterIdx >= chapters.length) return a
+    const at = anchorHighlight(a, chapters[a.chapterIdx])
+    if (!at) return a.stale ? a : { ...a, stale: true }
+    return at[0] === a.start && at[1] === a.end && !a.stale ? a : { ...a, start: at[0], end: at[1], stale: undefined }
+  }
+  if ((load()[slug] ?? []).some(a => move(a) !== a)) update(slug, list => list.map(move))
 }
 
 /** Every book's annotations, slug → list; re-renders on any change. */

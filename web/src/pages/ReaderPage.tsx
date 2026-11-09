@@ -11,7 +11,7 @@ import { KEEPS_KEYS } from '../components/KeyboardShortcuts'
 import type { SearchHit } from '../hooks/bookSearch'
 import { AnnotationEditor, AnnotationList, BookmarkIcon, HighlightToolbar } from '../components/Annotations'
 import {
-  HIGHLIGHT_COLORS, addAnnotation, annotationsMarkdown, downloadMarkdown, useAllAnnotations,
+  HIGHLIGHT_COLORS, addAnnotation, annotationsMarkdown, downloadMarkdown, reanchorAnnotations, useAllAnnotations,
   type Annotation, type HighlightColor,
 } from '../hooks/annotations'
 import { sentenceRanges } from '../hooks/readAlong'
@@ -85,6 +85,11 @@ export function ReaderPage() {
     if (!slug) return
     loadBook(slug)
   }, [slug])
+
+  // Highlights follow their text when the book's text changed (an update, or a newer copy online)
+  useEffect(() => {
+    if (slug && chapters.length > 0 && chapters[0].id !== 'excerpt') reanchorAnnotations(slug, chapters.map(c => c.content))
+  }, [slug, chapters])
 
   // Where each chapter starts in the whole text, and the total, for the share of the book read
   const chapterStarts = useMemo(() => {
@@ -272,7 +277,7 @@ export function ReaderPage() {
 
   const marks = useMemo<TextMark[]>(() => {
     const list: TextMark[] = annotations
-      .filter(a => a.kind === 'highlight' && a.chapterIdx === visibleChapterIdx)
+      .filter(a => a.kind === 'highlight' && a.chapterIdx === visibleChapterIdx && !a.stale)
       .map(a => ({
         start: a.start,
         end: a.end,

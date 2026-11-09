@@ -43,6 +43,7 @@ export function AnnotationList({ slug, list, chapterTitles, onJump }: {
               <div className="text-xs text-text-dim truncate">
                 {chapterTitles[a.chapterIdx] ?? `Chapter ${a.chapterIdx + 1}`}
                 {a.seconds !== undefined && ` · ${formatSeconds(a.seconds)}`}
+                {a.stale && <span className="text-warning"> · Text changed</span>}
               </div>
               <button onClick={() => onJump(a)} className="block w-full text-left text-sm text-text-muted hover:text-text transition line-clamp-3">
                 {a.kind === 'highlight' ? `“${a.text}”` : a.text}
