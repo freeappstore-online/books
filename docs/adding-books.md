@@ -123,7 +123,7 @@ The workflow runs three jobs:
    `<voice>/<slug>/<chapter>.m4a` in the dataset yet (every chapter of `books` with `force`). It packs them into shards of up to 600k characters
    (about 4 h of CPU), keeping a book's chapters together.
 2. **generate** (`scripts/audio/generate.py`) runs one job per shard, at most 15 at once. It narrates
-   each chapter with Kokoro v1.0 (the model the app runs in the browser) one sentence at a time
+   each chapter with Kokoro v1.0 one sentence at a time
    (`scripts/audio/segments.py` splits them), joins them with short pauses, and encodes 40 kbps mono AAC.
    Next to the audio it writes `<chapter>.timings.json`, `{"v":1,"segments":[[charStart,charEnd,startSec,endSec],...]}`,
    one segment per sentence with UTF-16 offsets into the chapter's `content` (books#22); the reader
@@ -133,8 +133,8 @@ The workflow runs three jobs:
 3. **manifest** (`scripts/audio/manifest.py`) rebuilds the `books`' entries in `manifest.json` from
    the dataset once all shards are done, in case one died before its last commit. Only the run's
    `books` are touched (every book when `books` is empty), so audio of other books in the dataset
-   stays out of the app until a run is asked for them. The app's "AI" badge and
-   prepared playback come from this file (`web/src/hooks/preparedAudio.ts`).
+   stays out of the app until a run is asked for them. The app's "Audiobook" badge,
+   its Play button and playback come from this file (`web/src/hooks/preparedAudio.ts`).
 
 Audio narrated before timings existed (everything uploaded before books#22, except Alice) has no
 `timings.json`. Either narrate it again with `force`, or derive timings from the pauses in the audio
@@ -167,9 +167,9 @@ access to `serge-ivo/books-audio`). Never print it.
     | python3 -c 'import json,sys; m=json.load(sys.stdin)["af_heart"]; s=sys.argv[1]; print(s, "missing" if s not in m else f"{sum(d is None for d in m[s])} of {len(m[s])} chapters missing")' north-and-south
   ```
 
-- In the app, a book with no narration is reading-only: no Play button and no AI pill. It becomes
-  listenable once the manifest has a chapter of it for any voice. So a newly added book stays
-  reading-only until its narration lands. Check that the book now shows the AI pill and that
+- In the app, a book with no narration is reading-only: no Play button and no Audiobook pill. It becomes
+  listenable once the manifest has a chapter of it in the app's voice (`af_heart`). So a newly added book stays
+  reading-only until its narration lands. Check that the book now shows the Audiobook pill and that
   chapters play at once on a phone.
 
 ## Changing a book after it is narrated

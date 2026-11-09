@@ -38,7 +38,7 @@ export function NavBar({ title, subtitle, actions }: Props) {
               to="/library"
               className={`transition ${location.pathname === '/library' ? 'text-text font-medium' : 'text-text-muted hover:text-text'}`}
             >
-              Library
+              My books
             </Link>
             <Link
               to="/settings"
@@ -81,7 +81,7 @@ export function NavBar({ title, subtitle, actions }: Props) {
             <Link
               to="/library"
               className={`p-2 rounded-lg transition ${location.pathname === '/library' ? 'text-text' : 'text-text-dim hover:text-text-muted'}`}
-              title="Library"
+              title="My books"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
             </Link>
