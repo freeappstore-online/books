@@ -7,9 +7,12 @@ import {
   primePreparedAudio,
   getKokoroRuntimeInfo,
   subscribeKokoroRuntimeInfo,
+  getPreparedTime,
+  seekPrepared,
+  type KokoroPlayback,
   type KokoroRuntimeInfo,
 } from './useKokoro'
-import { getLoadedManifest, isNarrated, isPrepared, loadPreparedManifest } from './preparedAudio'
+import { getLoadedManifest, isNarrated, isPrepared, loadPreparedManifest, preparedUrl } from './preparedAudio'
 import {
   loadRate, saveRate, loadVoice, saveVoice, loadEngine, saveEngine,
   loadHistory, saveHistory, loadPosition, savePosition,
@@ -44,6 +47,8 @@ interface AudioPlayerState {
   playing: boolean
   muted: boolean
   chapterIdx: number
+  /** Char offset reached in the chapter by device speech (to the start of the sentence chunk) */
+  chapterOffset: number
   wordHighlight: WordHighlight | null
   rate: number
   voiceName: string
@@ -64,6 +69,10 @@ interface AudioPlayerState {
   setChapter: (idx: number) => void
   nextChapter: () => void
   prevChapter: () => void
+  /** Jump `seconds` forward (or back, if negative) in the chapter */
+  skip: (seconds: number) => void
+  /** Move AI narration of the current chapter to `seconds` */
+  seekAi: (seconds: number) => void
   setRate: (rate: number) => void
   setVoiceName: (name: string) => void
   setEngine: (engine: TtsEngine) => void
@@ -105,6 +114,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
   const [chapterIdx, setChapterIdx] = useState(0)
+  const [chapterOffset, setChapterOffset] = useState(0)
   const [wordHighlight, setWordHighlight] = useState<WordHighlight | null>(null)
   const [rate, setRateState] = useState(loadRate)
   const [voiceName, setVoiceNameState] = useState(loadVoice)
@@ -114,7 +124,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [kokoroLoading, setKokoroLoading] = useState(false)
   const [kokoroGenerated, setKokoroGenerated] = useState(0)
   const [kokoroTotal, setKokoroTotal] = useState(0)
-  const kokoroPlayerRef = useRef<{ stop: () => void; mute: () => void; unmute: () => void } | null>(null)
+  const kokoroPlayerRef = useRef<KokoroPlayback | null>(null)
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory)
 
@@ -203,6 +213,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     setChapterIdx(idx)
     chapterIdxRef.current = idx
     currentCharOffsetRef.current = offset
+    setChapterOffset(offset)
     setPlaying(true)
     savePosition(b.slug, idx, offset)
   }, [])
@@ -254,6 +265,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       utterance.onstart = () => {
         if (gen !== genRef.current) return
         currentCharOffsetRef.current = chunk.start
+        setChapterOffset(chunk.start)
         savePosition(b!.slug, idx, chunk.start)
       }
       utterance.onboundary = (e) => {
@@ -425,6 +437,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     setChapterIdx(idx)
     chapterIdxRef.current = idx
     currentCharOffsetRef.current = 0
+    setChapterOffset(0)
     savePosition(b.slug, idx, 0)
   }, [playing, startPlayback])
 
@@ -435,6 +448,47 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const prevChapter = useCallback(() => {
     setChapterAndPlay(chapterIdxRef.current - 1)
   }, [setChapterAndPlay])
+
+  /** AI narration of the current chapter, if it is prepared: its URL and length in seconds. */
+  const preparedChapter = useCallback(() => {
+    const b = bookRef.current
+    const seconds = b && getLoadedManifest()?.[kokoroVoice]?.[b.slug]?.[chapterIdxRef.current]
+    return b && seconds ? { url: preparedUrl(b.slug, chapterIdxRef.current, kokoroVoice), seconds } : null
+  }, [kokoroVoice])
+
+  const seekAi = useCallback((seconds: number) => {
+    const prepared = preparedChapter()
+    if (engineRef.current === 'kokoro' && prepared) seekPrepared(prepared.url, seconds, prepared.seconds)
+  }, [preparedChapter])
+
+  const skip = useCallback((seconds: number) => {
+    const b = bookRef.current
+    if (!b) return
+    if (engineRef.current === 'kokoro') {
+      // Only prepared narration can be seeked; generated audio is scheduled as it is made
+      const prepared = preparedChapter()
+      if (prepared) seekPrepared(prepared.url, getPreparedTime(prepared.url) + seconds, prepared.seconds)
+      return
+    }
+    // Device speech: estimate the offset from the chunk size (about 10 s each), then
+    // start from the beginning of the sentence chunk it falls in
+    const idx = chapterIdxRef.current
+    const text = b.chapters[idx].content
+    const target = currentCharOffsetRef.current + seconds * (CHUNK_CHARS_AT_1X / 10) * rateRef.current
+    if (target >= text.length) {
+      if (idx + 1 < b.chapters.length) setChapterAndPlay(idx + 1)
+      return
+    }
+    const chunk = chunkText(text, 0, rateRef.current).findLast(c => c.start <= target)
+    const offset = chunk?.start ?? 0
+    if (playing) {
+      speakBrowser(idx, offset)
+      return
+    }
+    currentCharOffsetRef.current = offset
+    setChapterOffset(offset)
+    savePosition(b.slug, idx, offset)
+  }, [preparedChapter, setChapterAndPlay, playing, speakBrowser])
 
   // Media Session API — lock screen controls + background audio metadata
   useEffect(() => {
@@ -454,8 +508,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   // Lock-screen buttons do exactly what the on-screen ones do. Track changes
   // from there always start playing.
-  const mediaActionsRef = useRef({ play, pause, startPlayback })
-  mediaActionsRef.current = { play, pause, startPlayback }
+  const mediaActionsRef = useRef({ play, pause, startPlayback, skip, seekAi })
+  mediaActionsRef.current = { play, pause, startPlayback, skip, seekAi }
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
     const ms = navigator.mediaSession
@@ -468,11 +522,19 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     ms.setActionHandler('pause', () => mediaActionsRef.current.pause())
     ms.setActionHandler('nexttrack', () => skip(1))
     ms.setActionHandler('previoustrack', () => skip(-1))
+    ms.setActionHandler('seekbackward', d => mediaActionsRef.current.skip(-(d.seekOffset || 15)))
+    ms.setActionHandler('seekforward', d => mediaActionsRef.current.skip(d.seekOffset || 30))
+    try {
+      ms.setActionHandler('seekto', d => { if (d.seekTime != null) mediaActionsRef.current.seekAi(d.seekTime) })
+    } catch { /* not supported by every browser */ }
     return () => {
       ms.setActionHandler('play', null)
       ms.setActionHandler('pause', null)
       ms.setActionHandler('nexttrack', null)
       ms.setActionHandler('previoustrack', null)
+      ms.setActionHandler('seekbackward', null)
+      ms.setActionHandler('seekforward', null)
+      try { ms.setActionHandler('seekto', null) } catch {}
     }
   }, [])
 
@@ -480,7 +542,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     setRateState(r)
     rateRef.current = r
     saveRate(r)
-    if (playing) startPlayback(chapterIdxRef.current, currentCharOffsetRef.current)
+    if (!playing) return
+    // AI narration changes speed in place; device speech has to speak again at the new rate
+    const kokoroPlayer = kokoroPlayerRef.current
+    if (engineRef.current === 'kokoro' && kokoroPlayer?.setRate) kokoroPlayer.setRate(r)
+    else startPlayback(chapterIdxRef.current, currentCharOffsetRef.current)
   }, [playing, startPlayback])
 
   const setVoiceName = useCallback((name: string) => {
@@ -508,10 +574,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   return (
     <AudioPlayerContext.Provider value={{
-      book, playing, muted, chapterIdx, wordHighlight, rate, voiceName, voices, history,
+      book, playing, muted, chapterIdx, chapterOffset, wordHighlight, rate, voiceName, voices, history,
       engine, kokoroLoading, kokoroGenerated, kokoroTotal, kokoroVoice, kokoroRuntime,
       loadAndPlay, play, pause, stop, toggleMute,
-      setChapter: setChapterAndPlay, nextChapter, prevChapter,
+      setChapter: setChapterAndPlay, nextChapter, prevChapter, skip, seekAi,
       setRate, setVoiceName, setEngine, setKokoroVoice: setKokoroVoiceVal,
     }}>
       {children}

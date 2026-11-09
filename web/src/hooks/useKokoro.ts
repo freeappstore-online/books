@@ -290,12 +290,89 @@ function savePreparedPosition(url: string, seconds: number | null) {
  */
 const preparedAudio = typeof Audio !== 'undefined' ? new Audio() : null
 let preparedOwner = 0
+/** URL of the prepared chapter the element is playing, null when stopped. */
+let preparedPlaying: string | null = null
+
+export interface PreparedPosition {
+  /** Chapter last played, or seeked while paused */
+  url: string | null
+  /** Whether that chapter is loaded in the element now */
+  active: boolean
+  time: number
+  duration: number
+}
+
+let preparedPosition: PreparedPosition = { url: null, active: false, time: 0, duration: 0 }
+const positionListeners = new Set<() => void>()
+
+function setPreparedPosition(next: PreparedPosition) {
+  preparedPosition = next
+  for (const listener of positionListeners) listener()
+}
+
+function updatePreparedPosition() {
+  const audio = preparedAudio!
+  if (!preparedPlaying) return
+  const duration = Number.isFinite(audio.duration) ? audio.duration : 0
+  setPreparedPosition({ url: preparedPlaying, active: true, time: audio.currentTime, duration })
+  // Lock screen, car and headphones show and scrub the chapter
+  if ('mediaSession' in navigator && duration > 0) {
+    try {
+      navigator.mediaSession.setPositionState({ duration, position: Math.min(audio.currentTime, duration), playbackRate: audio.playbackRate })
+    } catch {}
+  }
+}
+
+if (preparedAudio) {
+  preparedAudio.addEventListener('timeupdate', () => {
+    // The seek bar needs about a second of resolution; the lock screen extrapolates by itself
+    if (Math.abs(preparedAudio.currentTime - preparedPosition.time) >= 0.5) updatePreparedPosition()
+  })
+  for (const type of ['durationchange', 'seeked', 'ratechange', 'play', 'pause']) {
+    preparedAudio.addEventListener(type, updatePreparedPosition)
+  }
+}
+
+function subscribePreparedPosition(listener: () => void) {
+  positionListeners.add(listener)
+  return () => { positionListeners.delete(listener) }
+}
+
+/** Where the prepared narration is, for the seek bar. */
+export function usePreparedPosition(): PreparedPosition {
+  return useSyncExternalStore(subscribePreparedPosition, () => preparedPosition, () => preparedPosition)
+}
+
+/** Seconds reached in prepared chapter `url`: live while it plays, else where it was stopped. */
+export function getPreparedTime(url: string): number {
+  if (preparedPlaying === url) return preparedAudio!.currentTime
+  return loadPreparedPositions()[url] ?? 0
+}
+
+/** Move prepared chapter `url` to `seconds`: seeks it while it plays, else it resumes from there. */
+export function seekPrepared(url: string, seconds: number, duration: number) {
+  const at = Math.min(Math.max(0, seconds), duration)
+  if (preparedPlaying === url && preparedAudio!.readyState > 0) {
+    preparedAudio!.currentTime = at
+    return
+  }
+  savePreparedPosition(url, at)
+  setPreparedPosition({ url, active: false, time: at, duration })
+}
 
 /** Call synchronously inside a click handler, before any await. */
 export function primePreparedAudio() {
   if (!preparedAudio || !preparedAudio.paused) return
   preparedAudio.src = '/silence.wav'
   preparedAudio.play().catch(() => {})
+}
+
+export interface KokoroPlayback {
+  stop: () => void
+  mute: () => void
+  unmute: () => void
+  /** Change speed without restarting; absent where scheduled audio can't follow */
+  setRate?: (rate: number) => void
 }
 
 export async function kokoroStreamPlay(
@@ -309,7 +386,7 @@ export async function kokoroStreamPlay(
   bookSlug?: string,
   chapterIdx?: number,
   version: string = 'original',
-): Promise<{ stop: () => void; mute: () => void; unmute: () => void }> {
+): Promise<KokoroPlayback> {
   log('streamPlay: voice=%s rate=%s text=%d chars', voiceId, rate, text.length)
 
   // Evict old cache entries periodically
@@ -338,17 +415,20 @@ export async function kokoroStreamPlay(
       stop() { stopped = true; try { source.stop() } catch {} ; ctx.close().catch(() => {}) },
       mute() { ctx.suspend().catch(() => {}) },
       unmute() { ctx.resume().catch(() => {}) },
+      setRate(r: number) { source.playbackRate.value = r },
     }
   }
 
   // Helper: stream a prepared chapter, resuming where it was last stopped
-  function playPrepared(url: string) {
+  function playPrepared(url: string): KokoroPlayback {
     const audio = preparedAudio!
     const me = ++preparedOwner
     const mine = () => preparedOwner === me
     let stopped = false
     let lastSaved = 0
     audio.pause()
+    preparedPlaying = url
+    setPreparedPosition({ url, active: true, time: loadPreparedPositions()[url] ?? 0, duration: 0 })
     audio.src = url
     audio.addEventListener('loadedmetadata', () => {
       // Seeking before metadata is ignored by iOS Safari
@@ -379,12 +459,19 @@ export async function kokoroStreamPlay(
         if (!mine()) return
         // Before metadata currentTime is 0: keep the saved position
         if (!audio.ended && audio.readyState > 0) savePreparedPosition(url, audio.currentTime)
+        preparedPlaying = null
+        setPreparedPosition({ ...preparedPosition, active: false, time: getPreparedTime(url) })
         audio.pause()
         audio.removeAttribute('src')
         audio.load()
       },
       mute() { if (mine()) audio.pause() },
       unmute() { if (mine()) audio.play().catch(() => {}) },
+      setRate(r: number) {
+        if (!mine()) return
+        audio.playbackRate = r
+        audio.defaultPlaybackRate = r
+      },
     }
   }
 
