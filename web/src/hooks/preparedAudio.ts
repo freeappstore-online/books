@@ -16,12 +16,19 @@ export type PreparedManifest = Record<string, Record<string, (number | null)[]>>
 
 let manifestPromise: Promise<PreparedManifest> | null = null
 let loadedManifest: PreparedManifest | null = null
+/** Whether the loaded manifest came from the network, not the saved copy */
+let manifestFresh = false
+const manifestListeners = new Set<(m: PreparedManifest) => void>()
 
 export function loadPreparedManifest(): Promise<PreparedManifest> {
   manifestPromise ??= fetch(MANIFEST_URL)
-    .then(r => (r.ok ? r.json() : savedManifest()))
+    .then(r => (r.ok ? r.json().then(m => { manifestFresh = true; return m }) : savedManifest()))
     .catch(savedManifest)
-    .then(m => (loadedManifest = m))
+    .then(m => {
+      loadedManifest = m
+      for (const listener of manifestListeners) listener(m)
+      return m
+    })
   return manifestPromise
 }
 
@@ -29,6 +36,16 @@ export function loadPreparedManifest(): Promise<PreparedManifest> {
 async function savedManifest(): Promise<PreparedManifest> {
   const saved = typeof caches === 'undefined' ? undefined : await caches.match(MANIFEST_URL).catch(() => undefined)
   return saved ? saved.json() : {}
+}
+
+// Started offline: fetch the full manifest once the connection is back, without a reload (books#24)
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    if (manifestPromise && !manifestFresh) {
+      manifestPromise = null
+      loadPreparedManifest()
+    }
+  })
 }
 
 /** The manifest if it has loaded, else null. */
@@ -39,7 +56,11 @@ export function getLoadedManifest(): PreparedManifest | null {
 /** The manifest, or null while it is still loading. */
 export function usePreparedManifest(): PreparedManifest | null {
   const [manifest, setManifest] = useState(loadedManifest)
-  useEffect(() => { loadPreparedManifest().then(setManifest) }, [])
+  useEffect(() => {
+    manifestListeners.add(setManifest)
+    loadPreparedManifest().then(setManifest)
+    return () => { manifestListeners.delete(setManifest) }
+  }, [])
   return manifest
 }
 

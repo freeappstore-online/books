@@ -7,14 +7,34 @@
  * manifest so the app knows what's narrated while offline. Which books are
  * saved, and how large each file is, is kept in localStorage.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CATALOG } from '../data/catalog'
 import { coverUrl } from '../components/BookCover'
-import { MANIFEST_URL, preparedUrl, preparedTimingsUrl, type PreparedManifest } from './preparedAudio'
+import {
+  MANIFEST_URL, preparedCount, preparedUrl, preparedTimingsUrl, usePreparedManifest, type PreparedManifest,
+} from './preparedAudio'
 
 const CACHE = 'books-offline-v1'
 const SAVED_KEY = 'bp-offline-books'
 export const OFFLINE_CHANGED_EVENT = 'bp-offline-changed'
+
+/**
+ * What a save keeps of a book. Saves made with an older format are offered
+ * Update, which downloads only what they lack. 2: the text's version (to
+ * notice a changed text) and read-along timings published after a chapter
+ * was saved (books#24).
+ */
+const SAVE_FORMAT = 2
+/** Attempts per file before a save reports the failure */
+const ATTEMPTS = 3
+
+/**
+ * Cross-tab locks (Web Locks): saves hold FILES_LOCK shared and their book's
+ * lock exclusively, so a book saves in one tab at a time; clearing the files
+ * a closed page left behind holds FILES_LOCK exclusively.
+ */
+const FILES_LOCK = 'bp-offline-files'
+const bookLock = (slug: string) => `bp-offline-${slug}`
 
 /** Measured on Alice chapter 1: 3.2 MB for 615 s of AAC. */
 const AUDIO_BYTES_PER_SECOND = 5200
@@ -25,6 +45,10 @@ export interface SavedBook {
   /** Saved file URL → bytes */
   files: Record<string, number>
   savedAt: number
+  /** SAVE_FORMAT of the last complete save or update; absent before format 2 */
+  format?: number
+  /** ETag of the saved text */
+  textVersion?: string
 }
 
 export interface SaveJob {
@@ -35,9 +59,21 @@ export interface SaveJob {
 
 const jobs: Record<string, SaveJob> = {}
 const errors: Record<string, string> = {}
+/** Books whose text has changed on the server since they were saved */
+const textChanged: Record<string, boolean> = {}
 
 function emit() {
   window.dispatchEvent(new CustomEvent(OFFLINE_CHANGED_EVENT))
+}
+
+// Another tab saved or removed a book
+window.addEventListener('storage', e => { if (e.key === SAVED_KEY) emit() })
+
+/** Run `fn` holding the named locks in order; without Web Locks (Safari < 15.4) just run it. */
+function withLocks<T>(locks: [string, LockOptions][], fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!navigator.locks || locks.length === 0) return fn()
+  const [[name, options], ...rest] = locks
+  return navigator.locks.request(name, { ...options, signal }, () => withLocks(rest, fn, signal)) as Promise<T>
 }
 
 export function getSavedBooks(): Record<string, SavedBook> {
@@ -86,11 +122,23 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`
 }
 
+const isQuotaError = (err: unknown) => err instanceof DOMException && err.name === 'QuotaExceededError'
+
+function wait(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const id = setTimeout(resolve, ms)
+    signal.addEventListener('abort', () => { clearTimeout(id); reject(signal.reason) }, { once: true })
+  })
+}
+
 /**
  * Download a book's text and every prepared chapter not saved yet. Also used
- * for "Update": files already saved are kept, only new chapters download.
+ * for "Update": only what the saved copy lacks downloads, and the text again
+ * when it changed. A failed or cancelled first save leaves nothing behind; a
+ * failed update keeps the files it finished. Each file is tried ATTEMPTS times.
+ * `voice` null: the text only (updating a book saved for reading).
  */
-export async function saveBook(slug: string, voice: string) {
+export function saveBook(slug: string, voice: string | null) {
   const book = CATALOG.find(b => b.id === slug)
   if (!book || jobs[slug]) return
   const controller = new AbortController()
@@ -98,67 +146,98 @@ export async function saveBook(slug: string, voice: string) {
   jobs[slug] = job
   delete errors[slug]
   emit()
-  // Ask the browser not to evict saved books under storage pressure
-  navigator.storage?.persist?.().catch(() => {})
+  // Ask the browser not to evict saved books (still inside the click); My books shows the answer
+  navigator.storage?.persist?.().then(emit, () => {})
 
-  const previous = getSavedBooks()[slug]
-  const files: Record<string, number> = { ...previous?.files }
-  const cache = await caches.open(CACHE)
   const signal = controller.signal
-  let done = 0
-  let total = 1
-  async function store(url: string, required: boolean): Promise<boolean> {
-    const res = await fetch(url, { signal })
-    if (!res.ok) {
-      if (required) throw new Error(`${res.status} for ${url}`)
-      return false
-    }
-    const blob = await res.blob()
-    await cache.put(url, new Response(blob, { headers: { 'content-type': blob.type } }))
-    files[url] = blob.size
-    done += blob.size
-    job.progress = Math.min(0.99, done / total)
-    emit()
-    return true
-  }
+  const textUrl = new URL(book.contentPath, location.href).href
 
-  try {
-    const manifestRes = await fetch(MANIFEST_URL, { signal })
-    const manifest: PreparedManifest = manifestRes.ok ? await manifestRes.clone().json() : {}
-    const durations = manifest[voice]?.[slug] ?? []
-    const narrated = durations.some(d => d != null)
-    total = estimateAudioBytes(manifest, slug, voice) || 1
+  async function run() {
+    // Read under the lock: another tab may have saved this book meanwhile
+    const previous = getSavedBooks()[slug]
+    const files: Record<string, number> = { ...previous?.files }
+    let textVersion = previous?.textVersion
+    const cache = await caches.open(CACHE)
+    let done = 0
+    let total = 1
 
-    await store(new URL(book.contentPath, location.href).href, true)
-    // The service worker keeps covers in its own runtime cache (book-covers-v1, never evicted
-    // at catalogue size), so fetching it once is enough for it to show offline (books#8)
-    const cover = coverUrl(slug)
-    if (cover) await fetch(cover, { signal }).catch(() => {})
-    if (narrated) await cache.put(MANIFEST_URL, manifestRes)
-    for (let i = 0; i < durations.length; i++) {
-      if (durations[i] == null) continue
-      const audio = preparedUrl(slug, i, voice)
-      if (files[audio]) {
-        done += files[audio]
-        continue
+    /** Download `url` into the saved copy; false when an optional file can't be had. */
+    async function store(url: string, required: boolean, init?: RequestInit): Promise<Response | false> {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const res = await fetch(url, { ...init, signal })
+          if (res.status === 304) return res
+          if (!res.ok) {
+            if (!required && res.status === 404) return false
+            throw new Error(`${res.status} for ${url}`)
+          }
+          const blob = await res.blob()
+          await cache.put(url, new Response(blob, { headers: { 'content-type': blob.type } }))
+          files[url] = blob.size
+          done += blob.size
+          job.progress = Math.min(0.99, done / total)
+          emit()
+          return res
+        } catch (err) {
+          if (signal.aborted || isQuotaError(err)) throw err
+          if (attempt >= ATTEMPTS) {
+            if (required) throw err
+            return false
+          }
+          await wait(1000 * attempt, signal)
+        }
       }
-      await store(audio, true)
-      // Word timings sit next to each chapter; most chapters may not have them yet
-      await store(preparedTimingsUrl(slug, i, voice), false)
     }
-    setSavedBook(slug, { voice: narrated ? voice : null, files, savedAt: Date.now() })
-  } catch (err) {
-    if (previous) {
-      // An interrupted update keeps what it already downloaded
-      setSavedBook(slug, { ...previous, files })
-    } else {
-      await removeFiles(slug, Object.keys(files))
+
+    try {
+      const manifestRes = await fetch(MANIFEST_URL, { signal })
+      const manifest: PreparedManifest = manifestRes.ok ? await manifestRes.clone().json() : {}
+      const durations = (voice && manifest[voice]?.[slug]) || []
+      const narrated = durations.some(d => d != null)
+      total = (voice && estimateAudioBytes(manifest, slug, voice)) || 1
+
+      // The text again only when it changed on the server (304 otherwise)
+      const text = await store(textUrl, true, files[textUrl] && textVersion
+        ? { headers: { 'if-none-match': textVersion } }
+        : { cache: 'no-cache' })
+      if (text && text.status !== 304) textVersion = text.headers.get('etag') ?? undefined
+      // The service worker keeps covers in its own runtime cache (book-covers-v1, never evicted
+      // at catalogue size), so fetching it once is enough for it to show offline (books#8)
+      const cover = coverUrl(slug)
+      if (cover) await fetch(cover, { signal }).catch(() => {})
+      if (narrated) await cache.put(MANIFEST_URL, manifestRes)
+      for (let i = 0; i < durations.length; i++) {
+        if (durations[i] == null) continue
+        const audio = preparedUrl(slug, i, voice!)
+        if (files[audio]) done += files[audio]
+        else await store(audio, true)
+        // Word timings sit next to each chapter, and may be published after it
+        const timings = preparedTimingsUrl(slug, i, voice!)
+        if (!files[timings]) await store(timings, false)
+      }
+      setSavedBook(slug, { voice: narrated ? voice : null, files, savedAt: Date.now(), format: SAVE_FORMAT, textVersion })
+      delete textChanged[slug]
+    } catch (err) {
+      if (previous) {
+        // An interrupted update keeps what it finished downloading
+        setSavedBook(slug, { ...previous, files })
+      } else {
+        await removeFiles(slug, Object.keys(files))
+      }
+      if (!signal.aborted) {
+        errors[slug] = isQuotaError(err)
+          ? 'Not enough storage space on this device. Free up some space and try again.'
+          : 'The download failed. Check your connection and try again.'
+      }
     }
-    if (!signal.aborted) errors[slug] = err instanceof Error ? err.message : 'Download failed'
-  } finally {
-    delete jobs[slug]
-    emit()
   }
+
+  withLocks([[FILES_LOCK, { mode: 'shared' }], [bookLock(slug), {}]], run, signal)
+    .catch(() => {}) // cancelled while another tab was saving it
+    .finally(() => {
+      delete jobs[slug]
+      emit()
+    })
 }
 
 async function removeFiles(slug: string, urls: string[]) {
@@ -168,12 +247,79 @@ async function removeFiles(slug: string, urls: string[]) {
   if (others.length === 0) await cache.delete(MANIFEST_URL)
 }
 
-export async function removeSavedBook(slug: string) {
+/**
+ * Remove a saved book. A chapter playing from it plays on (its audio is
+ * already in memory); later chapters stream, and offline aren't offered.
+ */
+export function removeSavedBook(slug: string): Promise<void> {
+  delete errors[slug]
+  delete textChanged[slug]
+  return withLocks([[FILES_LOCK, { mode: 'shared' }], [bookLock(slug), {}]], async () => {
+    const saved = getSavedBooks()[slug]
+    if (!saved) return
+    setSavedBook(slug, null)
+    await removeFiles(slug, Object.keys(saved.files))
+  }).finally(emit)
+}
+
+// A book is written to the index only once its save completes. Clear the files of
+// saves whose page closed mid-download, while no tab is saving.
+if (typeof caches !== 'undefined' && navigator.locks) {
+  navigator.locks.request(FILES_LOCK, { ifAvailable: true }, async lock => {
+    if (!lock) return
+    const books = Object.values(getSavedBooks())
+    const keep = new Set(books.flatMap(b => Object.keys(b.files)))
+    if (books.some(b => b.voice)) keep.add(MANIFEST_URL)
+    const cache = await caches.open(CACHE)
+    for (const req of await cache.keys()) if (!keep.has(req.url)) await cache.delete(req)
+  }).catch(() => {})
+}
+
+const textChecks = new Set<string>()
+
+/** Find out (once per session) whether a saved book's text has changed on the server. */
+export function checkSavedText(slug: string) {
   const saved = getSavedBooks()[slug]
-  if (!saved) return
-  setSavedBook(slug, null)
-  await removeFiles(slug, Object.keys(saved.files))
-  emit()
+  const book = CATALOG.find(b => b.id === slug)
+  if (!saved?.textVersion || !book || textChecks.has(slug) || !navigator.onLine) return
+  textChecks.add(slug)
+  fetch(book.contentPath, { method: 'HEAD', cache: 'no-cache' })
+    .then(res => {
+      const etag = res.headers.get('etag')
+      if (res.ok && etag && etag !== getSavedBooks()[slug]?.textVersion) {
+        textChanged[slug] = true
+        emit()
+      }
+    })
+    .catch(() => textChecks.delete(slug))
+}
+
+/** What Update would bring to a saved book, or null when it is up to date. */
+export function updateReason(slug: string, book: SavedBook, manifest: PreparedManifest): string | null {
+  const newChapters = book.voice ? preparedCount(manifest, slug, book.voice) - savedAudioChapters(book) : 0
+  if (newChapters > 0) return `${newChapters} new chapter${newChapters === 1 ? '' : 's'}`
+  if (textChanged[slug]) return 'updated text'
+  if ((book.format ?? 1) < SAVE_FORMAT) return book.voice ? 'read-along' : 'latest text'
+  return null
+}
+
+/**
+ * The narration that can be played now. Offline that is only the chapters
+ * saved on this device, though the manifest (loaded earlier, or the saved
+ * copy) lists every narrated book (books#24).
+ */
+export function playableManifest(manifest: PreparedManifest, online = navigator.onLine): PreparedManifest {
+  if (online) return manifest
+  const saved = getSavedBooks()
+  const playable: PreparedManifest = {}
+  for (const [voice, books] of Object.entries(manifest)) {
+    playable[voice] = {}
+    for (const [slug, durations] of Object.entries(books)) {
+      const files = saved[slug]?.files
+      if (files) playable[voice][slug] = durations.map((d, i) => (preparedUrl(slug, i, voice) in files ? d : null))
+    }
+  }
+  return playable
 }
 
 export interface OfflineState {
@@ -191,6 +337,14 @@ export function useOfflineBooks(): OfflineState {
     return () => window.removeEventListener(OFFLINE_CHANGED_EVENT, sync)
   }, [])
   return state
+}
+
+/** usePreparedManifest narrowed to what can be played now; follows the connection and saves. */
+export function usePlayableManifest(): PreparedManifest | null {
+  const manifest = usePreparedManifest()
+  const online = useOnline()
+  const { saved } = useOfflineBooks()
+  return useMemo(() => manifest && playableManifest(manifest, online), [manifest, online, saved])
 }
 
 export function useOnline(): boolean {

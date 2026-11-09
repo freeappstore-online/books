@@ -158,4 +158,10 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* The SDK runtime's own update notice (an unstyled panel after the app);
+     components/UpdateToast.tsx shows updates instead (books#24). */
+  body > aside[aria-label="App installation and updates"] {
+    display: none;
+  }
 }

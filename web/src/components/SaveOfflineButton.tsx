@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { preparedCount, usePreparedManifest, VOICE } from '../hooks/preparedAudio'
 import {
-  estimateAudioBytes, formatBytes, saveBook, savedAudioChapters, useOfflineBooks, useOnline,
+  checkSavedText, estimateAudioBytes, formatBytes, saveBook, updateReason, useOfflineBooks, useOnline,
 } from '../hooks/offlineBooks'
 
 /**
@@ -37,6 +37,8 @@ function SaveOfflineControl({ slug }: { slug: string }) {
   const job = jobs[slug]
   const book = saved[slug]
 
+  useEffect(() => { if (online) checkSavedText(slug) }, [slug, online])
+
   if (job) {
     return (
       <button
@@ -54,15 +56,15 @@ function SaveOfflineControl({ slug }: { slug: string }) {
   const narrated = preparedCount(manifest, slug)
 
   if (book) {
-    const newChapters = book.voice ? narrated - savedAudioChapters(book) : 0
-    if (newChapters > 0 && online) {
+    const reason = updateReason(slug, book, manifest)
+    if (reason && online) {
       return (
         <button
-          onClick={() => saveBook(slug, book.voice!)}
+          onClick={() => saveBook(slug, book.voice)}
           className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-hover text-accent hover:text-text transition"
-          title={`${newChapters} newly narrated chapter${newChapters === 1 ? '' : 's'} to download`}
+          title={`Download what the saved copy is missing: ${reason}`}
         >
-          ↓ Update saved book
+          {errors[slug] ? '↻ Retry update' : '↓ Update saved book'}
         </button>
       )
     }
@@ -83,11 +85,20 @@ function SaveOfflineControl({ slug }: { slug: string }) {
     <button
       onClick={() => saveBook(slug, VOICE)}
       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-hover text-text-muted hover:text-accent transition"
-      title={errors[slug] ? `Last attempt failed: ${errors[slug]}` : narrated > 0
-        ? 'Download the text and narration to read and listen offline'
-        : 'Download the text to read offline'}
+      title={narrated > 0 ? 'Download the text and narration to read and listen offline' : 'Download the text to read offline'}
     >
       {errors[slug] ? '↻ Retry save' : narrated > 0 ? `↓ Save offline · ~${formatBytes(estimate)}` : '↓ Save to read offline'}
     </button>
+  )
+}
+
+/** Why the last save or update of this book failed, under the reader's header. */
+export function SaveOfflineError({ slug }: { slug: string }) {
+  const { errors, jobs } = useOfflineBooks()
+  if (!errors[slug] || jobs[slug]) return null
+  return (
+    <div role="alert" className="border-b border-border bg-danger/10 px-4 py-3 text-center text-sm text-danger">
+      Couldn't save this book: {errors[slug]}
+    </div>
   )
 }

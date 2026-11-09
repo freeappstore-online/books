@@ -1,5 +1,6 @@
 import { useAudioPlayer, type AudioChapter } from '../hooks/useAudioPlayer'
-import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
+import { isNarrated } from '../hooks/preparedAudio'
+import { usePlayableManifest } from '../hooks/offlineBooks'
 
 interface Props {
   slug: string
@@ -12,7 +13,8 @@ interface Props {
 /** The one way to listen: plays the book's narration from the chapter on screen. */
 export function PlayButton({ slug, bookTitle, bookAuthor, chapters, activeChapterIdx }: Props) {
   const player = useAudioPlayer()
-  const manifest = usePreparedManifest()
+  // Offline, only books saved on this device (books#24)
+  const manifest = usePlayableManifest()
   const isPlaying = player.book?.slug === slug && player.playing
 
   // Books without narration are reading-only; nothing shows until the manifest says which

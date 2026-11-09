@@ -164,12 +164,20 @@ export async function playNarration(slug: string, chapterIdx: number, rate: numb
   }
   const onEnded = () => { if (!mine()) return; savePosition(url, null); if (!stopped) cb.onEnded() }
   const onErr = () => { if (mine() && !stopped) cb.onError(a.error) }
+  // A streamed chapter that runs out of data with no connection would wait forever (books#24)
+  const onStall = () => {
+    if (!blob && mine() && !stopped && !navigator.onLine && !a.paused && a.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+      cb.onError(new Error('offline'))
+    }
+  }
   // Our own pause() calls happen before 'playing' or after stop(); 'pause' also precedes 'ended'
   const onPause = () => { if (mine() && started && !stopped && !a.ended) cb.onPaused() }
   a.addEventListener('timeupdate', onTime)
   a.addEventListener('pause', onPause)
   a.addEventListener('ended', onEnded)
   a.addEventListener('error', onErr)
+  a.addEventListener('waiting', onStall)
+  window.addEventListener('offline', onStall)
   a.playbackRate = rate
   a.defaultPlaybackRate = rate
   // A sleep timer may have faded the previous chapter
@@ -182,6 +190,8 @@ export async function playNarration(slug: string, chapterIdx: number, rate: numb
       a.removeEventListener('timeupdate', onTime)
       a.removeEventListener('ended', onEnded)
       a.removeEventListener('error', onErr)
+      a.removeEventListener('waiting', onStall)
+      window.removeEventListener('offline', onStall)
       a.removeEventListener('pause', onPause)
       if (!mine()) return
       // Before metadata currentTime is 0: keep the saved position

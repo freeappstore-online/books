@@ -3,8 +3,8 @@ import { useParams, Link } from 'react-router-dom'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { NavBar } from '../components/NavBar'
 import { PlayButton } from '../components/PlayButton'
-import { SaveOfflineButton } from '../components/SaveOfflineButton'
-import { fetchSavedOr } from '../hooks/offlineBooks'
+import { SaveOfflineButton, SaveOfflineError } from '../components/SaveOfflineButton'
+import { fetchSavedOr, playableManifest, useOnline } from '../hooks/offlineBooks'
 import { ChapterText, textOffset, type TextMark } from '../components/ChapterText'
 import { BookSearch, SEARCH_INPUT_ID } from '../components/BookSearch'
 import type { SearchHit } from '../hooks/bookSearch'
@@ -149,8 +149,11 @@ export function ReaderPage() {
   const currentChapter = chapters.find(c => c.id === activeChapter)
   const visibleChapterIdx = chapters.findIndex(c => c.id === activeChapter)
   const manifest = usePreparedManifest()
-  // Only narrated books can be listened to; false while the manifest loads (books#19)
-  const narrated = Boolean(slug && manifest && isNarrated(manifest, slug))
+  const online = useOnline()
+  // Only narrated books can be listened to; false while the manifest loads (books#19).
+  // Offline, only if saved on this device (books#24).
+  const narrated = Boolean(slug && manifest && isNarrated(playableManifest(manifest, online), slug))
+  const listenOffline = Boolean(slug && manifest && !online && !narrated && isNarrated(manifest, slug))
 
   const handleTextClick = useCallback((e: React.MouseEvent) => {
     if (!slug || !currentChapter || !narrated) return
@@ -291,9 +294,15 @@ export function ReaderPage() {
 
       {searchOpen && <BookSearch chapters={chapters} onJump={onSearchJump} onClose={closeSearch} />}
 
+      <SaveOfflineError slug={slug || ''} />
       {notSavedOffline && (
         <div className="border-b border-border bg-warning/10 px-4 py-3 text-center text-sm text-warning">
           You're offline and this book isn't saved on this device. Only the excerpt is available.
+        </div>
+      )}
+      {!notSavedOffline && listenOffline && (
+        <div role="status" className="border-b border-border bg-warning/10 px-4 py-3 text-center text-sm text-warning">
+          You're offline. Listening needs a connection unless the book is saved on this device.
         </div>
       )}
 

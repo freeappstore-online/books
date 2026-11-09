@@ -4,15 +4,16 @@ import { CATALOG, GENRES, ALL_TAGS, type CatalogBook } from '../data/catalog'
 import { BookCover } from '../components/BookCover'
 import { NavBar } from '../components/NavBar'
 import { getAllProgress, getProgressPercent } from '../hooks/useReadingProgress'
-import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
-import { useOfflineBooks, useOnline } from '../hooks/offlineBooks'
+import { isNarrated } from '../hooks/preparedAudio'
+import { useOfflineBooks, useOnline, usePlayableManifest } from '../hooks/offlineBooks'
 
 export function CatalogPage() {
   const [search, setSearch] = useState('')
   const [genre, setGenre] = useState<string>('')
   const [tag, setTag] = useState<string>('')
   const [sort, setSort] = useState<'title' | 'author' | 'year'>('title')
-  const manifest = usePreparedManifest()
+  // Offline, only saved books can be listened to (books#24)
+  const manifest = usePlayableManifest()
   const { saved } = useOfflineBooks()
   const online = useOnline()
   // Offline, only books saved on this device can be opened (books#7)

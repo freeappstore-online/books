@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { getNarrationTime, playNarration, primeNarration, seekNarration, type Narration } from './narration'
 import { chapterSeconds, getLoadedManifest, isNarrated, loadPreparedManifest, preparedUrl } from './preparedAudio'
+import { playableManifest } from './offlineBooks'
 import {
   loadRate, saveRate, loadHistory, saveHistory, loadPosition, savePosition, saveSleepChoice,
   type HistoryEntry,
@@ -42,6 +43,8 @@ interface AudioPlayerState {
   playing: boolean
   /** Playing was asked for and the audio hasn't started yet */
   loading: boolean
+  /** Why playback stopped by itself (connection lost, not saved offline); cleared by Play */
+  error: string | null
   chapterIdx: number
   rate: number
   history: HistoryEntry[]
@@ -81,6 +84,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [book, setBook] = useState<AudioBook | null>(null)
   const [playing, setPlaying] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [chapterIdx, setChapterIdx] = useState(0)
   const [rate, setRateState] = useState(loadRate)
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory)
@@ -172,14 +176,17 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     primeNarration()
     setPlaying(true)
     setLoading(true)
+    setError(null)
 
-    const manifest = await loadPreparedManifest()
+    // Offline, only chapters saved on this device (books#24)
+    const manifest = playableManifest(await loadPreparedManifest())
     if (gen !== genRef.current) return
     let idx = start
     while (idx >= 0 && idx < b.chapters.length && chapterSeconds(manifest, b.slug, idx) === null) idx += dir
     if (idx < 0 || idx >= b.chapters.length) {
       halt()
       setPlaying(false)
+      if (!navigator.onLine) setError("You're offline, and the rest of this book isn't saved on this device.")
       return
     }
     if (idx !== start) charOffset = undefined
@@ -196,8 +203,12 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const fail = (err: unknown) => {
       if (gen !== genRef.current) return
       console.error('Narration failed:', err)
+      // halt() keeps the position: Play resumes there
       halt()
       setPlaying(false)
+      setError(navigator.onLine
+        ? "This chapter couldn't be played. Press Play to try again."
+        : "Connection lost. Press Play when you're back online.")
     }
     try {
       const narration = await playNarration(b.slug, idx, rateRef.current, {
@@ -272,7 +283,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const loadAndPlay = useCallback((newBook: AudioBook, startChapter?: number, charOffset?: number) => {
     // Books without narration are reading-only (books#19)
     const manifest = getLoadedManifest()
-    if (!manifest || !isNarrated(manifest, newBook.slug)) return
+    if (!manifest || !isNarrated(playableManifest(manifest), newBook.slug)) return
     const track = trackRef.current
     if (charOffset !== undefined && bookRef.current?.slug === newBook.slug && track?.idx === startChapter
       && track.audio.readyState > 0 && track.timings !== undefined) {
@@ -293,6 +304,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const pause = useCallback(() => {
     halt()
     setPlaying(false)
+    setError(null)
   }, [halt])
 
   const setChapterAndPlay = useCallback((idx: number, dir: 1 | -1 = 1) => {
@@ -447,7 +459,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   return (
     <AudioPlayerContext.Provider value={{
-      book, playing, loading, chapterIdx, rate, history,
+      book, playing, loading, error, chapterIdx, rate, history,
       loadAndPlay, play, pause,
       setChapter: setChapterAndPlay, nextChapter, prevChapter, skip, seek,
       sleepTimer, startSleepTimer, extendSleepTimer, cancelSleepTimer,

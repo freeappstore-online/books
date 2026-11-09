@@ -5,11 +5,11 @@ import { getNarrationTime, useNarrationPosition } from '../hooks/narration'
 import { chapterSeconds, isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
 import { useNavigate } from 'react-router-dom'
 import { CATALOG } from '../data/catalog'
-import { fetchSavedOr } from '../hooks/offlineBooks'
+import { fetchSavedOr, usePlayableManifest } from '../hooks/offlineBooks'
 
 export function AudioPlayer() {
   const {
-    book, playing, loading, chapterIdx, rate, history,
+    book, playing, loading, error, chapterIdx, rate, history,
     play, pause, nextChapter, prevChapter, skip, seek, setRate,
     sleepTimer, startSleepTimer, extendSleepTimer, cancelSleepTimer,
     setChapter, loadAndPlay,
@@ -18,13 +18,15 @@ export function AudioPlayer() {
   const [tab, setTab] = useState<'chapters' | 'history'>('chapters')
   const navigate = useNavigate()
   const manifest = usePreparedManifest()
+  // Offline, Recent lists only books saved on this device (books#24)
+  const playable = usePlayableManifest()
   const position = useNarrationPosition()
   // Seek bar value while it is being dragged; seeking on every step would refetch the audio
   const [scrub, setScrub] = useState<number | null>(null)
 
   // Only narrated books can be listened to (books#19)
   if (!book || !manifest || !isNarrated(manifest, book.slug)) return null
-  const narratedHistory = history.filter(h => isNarrated(manifest, h.slug))
+  const narratedHistory = history.filter(h => playable && isNarrated(playable, h.slug))
 
   const chapter = book.chapters[chapterIdx]
   const totalChapters = book.chapters.length
@@ -132,6 +134,9 @@ export function AudioPlayer() {
           )}
         </div>
       )}
+
+      {/* Playback stopped by itself: connection lost, or not saved for offline */}
+      <div role="status" className="max-w-4xl mx-auto px-3 md:px-4 text-xs text-warning empty:hidden pt-2">{error}</div>
 
       {/* Chapter position */}
       {seekable && (

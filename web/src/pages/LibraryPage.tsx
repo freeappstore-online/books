@@ -5,10 +5,20 @@ import { BookCover } from '../components/BookCover'
 import { CATALOG } from '../data/catalog'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { getAllProgress } from '../hooks/useReadingProgress'
-import { preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
+import { usePreparedManifest } from '../hooks/preparedAudio'
 import {
-  formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, useOfflineBooks, useOnline,
+  checkSavedText, formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, updateReason,
+  useOfflineBooks, useOnline,
 } from '../hooks/offlineBooks'
+
+/**
+ * Safari on iPhone and iPad, not opened from the Home Screen: it deletes a
+ * site's storage after about 7 days without a visit (books#24).
+ */
+const iosSafariTab = (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+  && /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent)
+  && !(navigator as Navigator & { standalone?: boolean }).standalone
+  && !window.matchMedia?.('(display-mode: standalone)').matches
 
 /** My books: what is saved on this device and what is being read or listened to. */
 export function LibraryPage() {
@@ -69,11 +79,15 @@ function InProgress() {
 
 /** Books saved on this device for offline reading and listening (books#7). */
 function SavedBooks() {
-  const { saved, jobs } = useOfflineBooks()
+  const { saved, jobs, errors } = useOfflineBooks()
   const manifest = usePreparedManifest()
   const online = useOnline()
   const [storage, setStorage] = useState<{ usage: number; quota: number; persisted: boolean } | null>(null)
-  const slugs = [...new Set([...Object.keys(saved), ...Object.keys(jobs)])]
+  const slugs = [...new Set([...Object.keys(saved), ...Object.keys(jobs), ...Object.keys(errors)])]
+
+  useEffect(() => {
+    if (online) for (const slug of Object.keys(saved)) checkSavedText(slug)
+  }, [saved, online])
 
   useEffect(() => {
     const storageApi = navigator.storage
@@ -81,19 +95,25 @@ function SavedBooks() {
     Promise.all([storageApi.estimate(), storageApi.persisted?.() ?? false])
       .then(([estimate, persisted]) => setStorage({ usage: estimate.usage ?? 0, quota: estimate.quota ?? 0, persisted }))
       .catch(() => {})
-  }, [saved])
+  }, [saved, jobs])
 
   return (
     <section className="bg-surface rounded-xl border border-border p-5 md:p-6 mb-6">
       <div className="flex items-start justify-between gap-3 mb-3">
         <h2 className="text-lg font-display">Saved on this device</h2>
-        {storage && (
+        {storage && Object.keys(saved).length > 0 && (
           <div className="text-xs text-text-dim text-right">
             {formatBytes(storage.usage)} used{storage.quota > 0 && ` of ${formatBytes(storage.quota)}`}
-            <div>{storage.persisted ? 'Kept until you remove it' : 'The browser may clear it if space runs low'}</div>
+            <div>{storage.persisted ? 'Kept until you remove them' : 'Your browser may remove them if the device runs low on space'}</div>
           </div>
         )}
       </div>
+      {iosSafariTab && (
+        <p className="mb-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+          Safari deletes saved books after about a week without opening this site. To keep them, add it to your
+          Home Screen (Share, then Add to Home Screen) and open it from there.
+        </p>
+      )}
       {slugs.length === 0 ? (
         <p className="text-sm text-text-muted">
           Open a book and tap "Save offline" to read and listen without a connection.
@@ -106,7 +126,7 @@ function SavedBooks() {
             const catalogBook = CATALOG.find(b => b.id === slug)
             const chapters = catalogBook?.chapters ?? 0
             const audio = book ? savedAudioChapters(book) : 0
-            const newChapters = book?.voice && manifest ? preparedCount(manifest, slug, book.voice) - audio : 0
+            const reason = book && manifest ? updateReason(slug, book, manifest) : null
             return (
               <div key={slug} className="py-3 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
@@ -118,6 +138,7 @@ function SavedBooks() {
                       ? `Saving… ${Math.round(job.progress * 100)}%`
                       : book && `${formatBytes(savedBytes(book))} · ${book.voice ? `${audio}/${chapters} chapters with audio` : 'Text only'}`}
                   </div>
+                  {!job && errors[slug] && <div role="alert" className="text-xs text-danger mt-0.5">{errors[slug]}</div>}
                   {job && (
                     <div className="mt-1.5 h-1.5 bg-surface-hover rounded-full overflow-hidden">
                       <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${Math.round(job.progress * 100)}%` }} />
@@ -128,12 +149,14 @@ function SavedBooks() {
                   <button onClick={job.cancel} className="text-xs text-text-muted hover:text-danger transition shrink-0">Cancel</button>
                 ) : (
                   <div className="flex items-center gap-3 shrink-0">
-                    {newChapters > 0 && online && (
-                      <button onClick={() => saveBook(slug, book.voice!)} className="text-xs text-accent hover:underline">
-                        Update ({newChapters} new)
+                    {reason && online && (
+                      <button onClick={() => saveBook(slug, book.voice)} className="text-xs text-accent hover:underline">
+                        Update ({reason})
                       </button>
                     )}
-                    <button onClick={() => removeSavedBook(slug)} className="text-xs text-text-muted hover:text-danger transition">Remove</button>
+                    {book && (
+                      <button onClick={() => removeSavedBook(slug)} className="text-xs text-text-muted hover:text-danger transition">Remove</button>
+                    )}
                   </div>
                 )}
               </div>
