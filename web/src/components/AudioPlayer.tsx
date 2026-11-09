@@ -66,7 +66,9 @@ export function AudioPlayer() {
   }
 
   return (
-    <div role="region" aria-label="Player" className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface/95 backdrop-blur-sm">
+    // No backdrop-filter here: it would make the bar the containing block of the menus'
+    // fixed click-catcher, which then covers only the bar and taps outside don't close them
+    <div role="region" aria-label="Player" className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface">
       {/* Expanded panel */}
       {expanded && (
         <div id="player-panel" className="border-b border-border px-4 py-3 max-w-4xl mx-auto max-h-64 overflow-y-auto">
@@ -352,7 +354,7 @@ function BarMenu({ label, onClose, children }: { label: string; onClose: () => v
   return (
     <>
       <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div ref={menuRef} role="menu" aria-label={label} onKeyDown={onKeyDown} className="absolute bottom-full right-0 mb-2 z-20 max-h-72 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg py-1">
+      <div ref={menuRef} role="menu" aria-label={label} onKeyDown={onKeyDown} className="absolute bottom-full right-0 mb-2 z-20 max-h-[min(18rem,60dvh)] overflow-y-auto rounded-lg border border-border bg-surface shadow-lg py-1">
         {children}
       </div>
     </>
@@ -366,7 +368,7 @@ function MenuItem({ checked, onClick, children }: { checked?: boolean; onClick: 
       tabIndex={-1}
       aria-checked={checked}
       onClick={onClick}
-      className={`block w-full whitespace-nowrap px-4 py-1.5 text-left text-xs tabular-nums transition ${
+      className={`block w-full min-h-10 whitespace-nowrap px-4 py-2 text-left text-sm tabular-nums transition ${
         checked ? 'text-accent font-semibold' : 'text-text-muted hover:bg-surface-hover hover:text-text'
       }`}
     >
