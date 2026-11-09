@@ -13,7 +13,7 @@ interface RowProps {
 }
 
 function SizeRow({ label, hint, value, unit, range, onChange }: RowProps) {
-  const btn = 'w-9 h-9 shrink-0 rounded-lg bg-surface-hover text-text hover:bg-border disabled:opacity-40 transition'
+  const btn = 'w-10 h-10 shrink-0 rounded-lg bg-surface-hover text-text hover:bg-border disabled:opacity-40 transition'
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2">

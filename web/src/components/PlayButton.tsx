@@ -27,7 +27,7 @@ export function PlayButton({ slug, bookTitle, bookAuthor, chapters, activeChapte
         : player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, activeChapterIdx)}
       data-shortcut="play"
       aria-keyshortcuts="Space K"
-      className="px-3 py-1.5 rounded-lg font-semibold text-sm bg-accent hover:bg-accent-hover text-btn-text transition"
+      className="min-h-10 px-4 py-1.5 rounded-lg font-semibold text-sm bg-accent hover:bg-accent-hover text-btn-text transition"
     >
       {isPlaying ? 'Pause' : 'Play'}
     </button>

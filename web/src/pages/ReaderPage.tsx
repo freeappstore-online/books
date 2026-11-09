@@ -54,6 +54,7 @@ export function ReaderPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const fontSize = useReaderFontSize()
   const [textPanelOpen, setTextPanelOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const textButtonRef = useRef<HTMLButtonElement>(null)
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const themeStyle = THEME_STYLES[theme]
@@ -367,13 +368,12 @@ export function ReaderPage() {
           title={bookTitle}
           subtitle={bookAuthor ? `${bookAuthor} · ${bookGenre}` : bookGenre}
           actions={<>
-            <SaveOfflineButton slug={slug || ''} />
             <button
               onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
               aria-expanded={searchOpen}
               aria-label="Search in this book"
               title="Search in this book (/)"
-              className={`p-1.5 rounded-lg border border-border transition ${searchOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
+              className={`min-h-10 min-w-10 flex items-center justify-center p-1.5 rounded-lg border border-border transition ${searchOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
@@ -384,50 +384,66 @@ export function ReaderPage() {
               aria-expanded={notesOpen}
               aria-label="Bookmarks and notes"
               title="Bookmarks and notes"
-              className={`p-1.5 rounded-lg border border-border transition ${notesOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
+              className={`min-h-10 min-w-10 flex items-center justify-center p-1.5 rounded-lg border border-border transition ${notesOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
             >
               <BookmarkIcon />
             </button>
-            <div className="relative">
-              <button
-                ref={textButtonRef}
-                onClick={() => setTextPanelOpen(o => !o)}
-                aria-expanded={textPanelOpen}
-                aria-controls="text-size-panel"
-                aria-label="Text size"
-                title="Text size"
-                className={`px-2.5 py-1.5 rounded-lg text-sm border border-border transition ${textPanelOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
-              >
-                <span aria-hidden="true"><span className="text-xs">A</span><span className="text-base font-semibold">A</span></span>
-              </button>
-              {textPanelOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setTextPanelOpen(false)} />
-                  <div id="text-size-panel" role="group" aria-label="Text size" className="absolute right-0 top-full mt-2 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-xl text-left">
-                    <TextSizeControls preview={false} />
-                  </div>
-                </>
-              )}
-            </div>
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               aria-expanded={sidebarOpen}
               aria-controls="chapter-drawer"
               aria-label={`Chapters: chapter ${visibleChapterIdx + 1} of ${chapters.length}`}
-              className="md:hidden px-2.5 py-1.5 rounded-lg text-xs text-text-muted border border-border"
+              className="md:hidden min-h-10 px-3 py-1.5 rounded-lg text-xs text-text-muted border border-border"
             >
               Ch {visibleChapterIdx + 1}/{chapters.length}
             </button>
-            <select
-              value={theme}
-              onChange={e => { const t = e.target.value as Theme; setThemeState(t); setTheme(t) }}
-              aria-label="Theme"
-              className="bg-surface border border-border rounded-lg px-2 py-1.5 text-xs text-text-muted hidden sm:block"
+            {/* Phones: Save offline, text size and theme sit behind "More" on a row of their own,
+                so search, bookmarks, chapters and Play fit on one line; from sm they're inline */}
+            <button
+              onClick={() => setMoreOpen(o => !o)}
+              aria-expanded={moreOpen}
+              aria-controls="reader-more"
+              aria-label="More reading options"
+              title="More reading options"
+              className={`sm:hidden min-h-10 min-w-10 flex items-center justify-center rounded-lg border border-border transition ${moreOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
             >
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-              <option value="sepia">Sepia</option>
-            </select>
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+            </button>
+            <div id="reader-more" className={`${moreOpen ? 'flex' : 'hidden'} sm:contents order-last basis-full items-center justify-end gap-2`}>
+              <SaveOfflineButton slug={slug || ''} />
+              {/* Not positioned: the panel hangs from the header's right edge, on screen on phones too */}
+              <div>
+                <button
+                  ref={textButtonRef}
+                  onClick={() => setTextPanelOpen(o => !o)}
+                  aria-expanded={textPanelOpen}
+                  aria-controls="text-size-panel"
+                  aria-label="Text size"
+                  title="Text size"
+                  className={`min-h-10 px-2.5 py-1.5 rounded-lg text-sm border border-border transition ${textPanelOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
+                >
+                  <span aria-hidden="true"><span className="text-xs">A</span><span className="text-base font-semibold">A</span></span>
+                </button>
+                {textPanelOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setTextPanelOpen(false)} />
+                    <div id="text-size-panel" role="group" aria-label="Text size" className="absolute right-4 md:right-6 top-full mt-1 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-xl text-left">
+                      <TextSizeControls preview={false} />
+                    </div>
+                  </>
+                )}
+              </div>
+              <select
+                value={theme}
+                onChange={e => { const t = e.target.value as Theme; setThemeState(t); setTheme(t) }}
+                aria-label="Theme"
+                className="min-h-10 bg-surface border border-border rounded-lg px-2 py-1.5 text-base sm:text-xs text-text-muted"
+              >
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="sepia">Sepia</option>
+              </select>
+            </div>
             <PlayButton
               slug={slug || ''}
               bookTitle={bookTitle}

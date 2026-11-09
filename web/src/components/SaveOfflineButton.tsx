@@ -43,7 +43,7 @@ function SaveOfflineControl({ slug }: { slug: string }) {
     return (
       <button
         onClick={job.cancel}
-        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/20 text-accent hover:bg-danger/20 hover:text-danger transition"
+        className="min-h-10 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/20 text-accent hover:bg-danger/20 hover:text-danger transition"
         title="Cancel saving"
       >
         Saving {Math.round(job.progress * 100)}% · Cancel
@@ -61,7 +61,7 @@ function SaveOfflineControl({ slug }: { slug: string }) {
       return (
         <button
           onClick={() => saveBook(slug, book.voice)}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-hover text-accent hover:text-text transition"
+          className="min-h-10 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-hover text-accent hover:text-text transition"
           title={`Download what the saved copy is missing: ${reason}`}
         >
           {errors[slug] ? '↻ Retry update' : '↓ Update saved book'}
@@ -71,7 +71,7 @@ function SaveOfflineControl({ slug }: { slug: string }) {
     return (
       <Link
         to="/library"
-        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-success/15 text-success transition"
+        className="min-h-10 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-success/15 text-success transition"
         title="Saved on this device: manage it in My books"
       >
         ✓ Saved offline
@@ -84,10 +84,13 @@ function SaveOfflineControl({ slug }: { slug: string }) {
   return (
     <button
       onClick={() => saveBook(slug, VOICE)}
-      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-hover text-text-muted hover:text-accent transition"
-      title={narrated > 0 ? 'Download the text and narration to read and listen offline' : 'Download the text to read offline'}
+      className="min-h-10 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-hover text-text-muted hover:text-accent transition"
+      title={narrated > 0 ? `Download the text and narration (~${formatBytes(estimate)}) to read and listen offline` : 'Download the text to read offline'}
     >
-      {errors[slug] ? '↻ Retry save' : narrated > 0 ? `↓ Save offline · ~${formatBytes(estimate)}` : '↓ Save to read offline'}
+      {errors[slug] ? '↻ Retry save' : narrated > 0
+        // Phones have no room for the size next to Aa, Ch and Play; it is in the title
+        ? <>↓ Save offline<span className="hidden sm:inline">&nbsp;· ~{formatBytes(estimate)}</span></>
+        : '↓ Save to read offline'}
     </button>
   )
 }
