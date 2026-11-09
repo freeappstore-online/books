@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { hasCachedAudio, cacheKey } from '../hooks/audioCache'
 import { isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
-import { isPrepared, usePreparedManifest } from '../hooks/preparedAudio'
+import { isNarrated, isPrepared, usePreparedManifest } from '../hooks/preparedAudio'
 
 interface Props {
   slug: string
@@ -23,7 +23,8 @@ export function SmartPlayButtons({ slug, bookTitle, bookAuthor, chapters, active
   const [checking, setChecking] = useState(true)
   const isMobile = isMobileDevice()
   const kokoroReady = useKokoroReady()
-  const prepared = isPrepared(usePreparedManifest(), slug, activeChapterIdx, player.kokoroVoice)
+  const manifest = usePreparedManifest()
+  const prepared = manifest !== null && isPrepared(manifest, slug, activeChapterIdx, player.kokoroVoice)
   const aiReady = localAiReady || prepared
   const kokoroAvailable = aiReady || (!isMobile && kokoroReady)
 
@@ -63,6 +64,9 @@ export function SmartPlayButtons({ slug, bookTitle, bookAuthor, chapters, active
       activeChapterIdx,
     )
   }
+
+  // Books without AI narration are reading-only; nothing shows until the manifest says which
+  if (!manifest || !isNarrated(manifest, slug)) return null
 
   // Compact layout for the header
   if (isPlaying) {

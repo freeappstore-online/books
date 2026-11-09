@@ -8,6 +8,7 @@ import { useAudioPlayer } from './useAudioPlayer'
 import { getLibrary, runBackgroundGeneration, stopBackground, LIBRARY_CHANGED_EVENT, publishBackgroundStatus } from './useLibrary'
 import { isMobileDevice, generateInWorker, initWorker, useKokoroReady } from './useKokoro'
 import { CATALOG } from '../data/catalog'
+import { isNarrated, usePreparedManifest } from './preparedAudio'
 
 export function useBackgroundGeneration() {
   const { playing } = useAudioPlayer()
@@ -15,6 +16,7 @@ export function useBackgroundGeneration() {
   const startedRef = useRef(false)
   const [libraryVersion, setLibraryVersion] = useState(0)
   const [runVersion, setRunVersion] = useState(0)
+  const manifest = usePreparedManifest()
 
   useEffect(() => {
     function handleLibraryChanged() {
@@ -70,12 +72,13 @@ export function useBackgroundGeneration() {
   }, [playing, kokoroReady])
 
   useEffect(() => {
-    if (isMobileDevice() || !kokoroReady) return
+    if (isMobileDevice() || !kokoroReady || !manifest) return
     if (startedRef.current) {
       console.log('[LibraryBG] skip scheduling: background run already active')
       return
     }
-    const library = getLibrary()
+    // Local generation is offered only for narrated books for now (books#19)
+    const library = getLibrary().filter(book => isNarrated(manifest, book.slug))
     console.log(
       '[LibraryBG] reevaluate queue books=%d pending=%d playing=%s',
       library.length,
@@ -155,7 +158,7 @@ export function useBackgroundGeneration() {
 
       const getChapters = async (slug: string) => {
         const book = CATALOG.find(b => b.id === slug)
-        if (!book) return []
+        if (!book || !isNarrated(manifest, slug)) return []
         const res = await fetch(book.contentPath)
         if (!res.ok) return []
         const data = await res.json() as { chapters: { title: string; content: string }[] }
@@ -177,5 +180,5 @@ export function useBackgroundGeneration() {
       console.log('[LibraryBG] cleared pending schedule timer')
       clearTimeout(timer)
     }
-  }, [playing, libraryVersion, runVersion, kokoroReady])
+  }, [playing, libraryVersion, runVersion, kokoroReady, manifest])
 }

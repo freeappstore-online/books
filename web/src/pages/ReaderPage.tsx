@@ -9,8 +9,8 @@ import { saveProgress, getProgress } from '../hooks/useReadingProgress'
 import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
 import { CATALOG } from '../data/catalog'
 import { getLibrary, LIBRARY_CHANGED_EVENT } from '../hooks/useLibrary'
-import { isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
-import { preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
+import { useKokoroReady } from '../hooks/useKokoro'
+import { isNarrated, preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
 
 interface ReaderChapter {
   id: string
@@ -141,14 +141,15 @@ export function ReaderPage() {
   )
   const bookInLibrary = Boolean(libraryEntry)
   const manifest = usePreparedManifest()
-  const preparedChapters = slug ? preparedCount(manifest, slug, player.kokoroVoice) : 0
+  // Only narrated books can be listened to; false while the manifest loads (books#19)
+  const narrated = Boolean(slug && manifest && isNarrated(manifest, slug))
+  const preparedChapters = narrated ? preparedCount(manifest!, slug!, player.kokoroVoice) : 0
   const fullyPrepared = chapters.length > 0 && preparedChapters >= chapters.length
   const readyCount = Math.max(preparedChapters, libraryEntry?.generatedChapters ?? 0)
-  const isDesktop = !isMobileDevice()
   const kokoroReady = useKokoroReady()
 
   const handleTextClick = useCallback((e: React.MouseEvent) => {
-    if (!slug || !currentChapter) return
+    if (!slug || !currentChapter || !narrated) return
     const selection = window.getSelection()
     if (selection && selection.toString().length > 0) return
 
@@ -174,7 +175,7 @@ export function ReaderPage() {
     // Listening from a clicked word needs the device voice: AI narration can't start mid-text
     if (player.engine !== 'browser') player.setEngine('browser')
     player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx, offset)
-  }, [slug, currentChapter, player, bookTitle, bookAuthor, chapters, visibleChapterIdx])
+  }, [slug, currentChapter, narrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx])
 
   const highlightedContent = useMemo(() => {
     if (!currentChapter) return null
@@ -212,7 +213,7 @@ export function ReaderPage() {
         title={bookTitle}
         subtitle={bookAuthor ? `${bookAuthor} · ${bookGenre}` : bookGenre}
         actions={<>
-          <LibraryButton slug={slug || ''} title={bookTitle} totalChapters={chapters.length} />
+          {narrated && <LibraryButton slug={slug || ''} title={bookTitle} totalChapters={chapters.length} />}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="md:hidden px-2.5 py-1.5 rounded-lg text-xs text-text-muted border border-border"
@@ -238,7 +239,7 @@ export function ReaderPage() {
         </>}
       />
 
-      {(isDesktop || preparedChapters > 0) && chapters.length > 0 && (
+      {narrated && chapters.length > 0 && (
         <section className="border-b border-border bg-surface/70">
           <div className="max-w-5xl mx-auto px-4 md:px-6 py-3 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
@@ -331,10 +332,10 @@ export function ReaderPage() {
             <article ref={articleRef}>
               <h2 className="font-display mb-4 md:mb-6" style={{ fontSize: `${Math.round(fontSize * 1.35)}px` }}>{currentChapter.title}</h2>
               <div
-                className={`${themeStyle.muted} whitespace-pre-wrap cursor-pointer`}
+                className={`${themeStyle.muted} whitespace-pre-wrap ${narrated ? 'cursor-pointer' : ''}`}
                 style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
                 onClick={handleTextClick}
-                title="Click to start listening from here"
+                title={narrated ? 'Click to start listening from here' : undefined}
               >
                 {highlightedContent ? (
                   <>

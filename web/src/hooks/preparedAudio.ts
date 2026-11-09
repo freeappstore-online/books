@@ -11,18 +11,31 @@ const BASE = 'https://huggingface.co/datasets/serge-ivo/books-audio/resolve/main
 export type PreparedManifest = Record<string, Record<string, (number | null)[]>>
 
 let manifestPromise: Promise<PreparedManifest> | null = null
+let loadedManifest: PreparedManifest | null = null
 
 export function loadPreparedManifest(): Promise<PreparedManifest> {
   manifestPromise ??= fetch(`${BASE}/manifest.json`)
     .then(r => (r.ok ? r.json() : {}))
     .catch(() => ({}))
+    .then(m => (loadedManifest = m))
   return manifestPromise
 }
 
-export function usePreparedManifest(): PreparedManifest {
-  const [manifest, setManifest] = useState<PreparedManifest>({})
+/** The manifest if it has loaded, else null. */
+export function getLoadedManifest(): PreparedManifest | null {
+  return loadedManifest
+}
+
+/** The manifest, or null while it is still loading. */
+export function usePreparedManifest(): PreparedManifest | null {
+  const [manifest, setManifest] = useState(loadedManifest)
   useEffect(() => { loadPreparedManifest().then(setManifest) }, [])
   return manifest
+}
+
+/** Whether any chapter of the book has AI narration, in any voice. Only these books can be listened to. */
+export function isNarrated(m: PreparedManifest, slug: string): boolean {
+  return Object.values(m).some(books => books[slug]?.some(d => d != null))
 }
 
 export function isPrepared(m: PreparedManifest, slug: string, chapterIdx: number, voice: string): boolean {

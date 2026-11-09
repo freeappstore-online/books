@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAudioPlayer, RATES } from '../hooks/useAudioPlayer'
 import { KOKORO_VOICES, KOKORO_LANGUAGES, isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
-import { preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
+import { isNarrated, preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
 import { useNavigate } from 'react-router-dom'
 import { CATALOG } from '../data/catalog'
 
@@ -18,7 +18,9 @@ export function AudioPlayer() {
   const kokoroReady = useKokoroReady()
   const manifest = usePreparedManifest()
 
-  if (!book) return null
+  // Only narrated books can be listened to (books#19)
+  if (!book || !manifest || !isNarrated(manifest, book.slug)) return null
+  const narratedHistory = history.filter(h => isNarrated(manifest, h.slug))
   const hasPrepared = preparedCount(manifest, book.slug, kokoroVoice) > 0
   const kokoroUsable = hasPrepared || (kokoroReady && !isMobileDevice())
 
@@ -58,7 +60,7 @@ export function AudioPlayer() {
                   tab === t ? 'text-accent' : 'text-text-dim hover:text-text-muted'
                 }`}
               >
-                {t === 'chapters' ? `Chapters (${totalChapters})` : t === 'history' ? `Library (${history.length})` : 'Settings'}
+                {t === 'chapters' ? `Chapters (${totalChapters})` : t === 'history' ? `Library (${narratedHistory.length})` : 'Settings'}
               </button>
             ))}
           </div>
@@ -86,10 +88,10 @@ export function AudioPlayer() {
           {/* History / Library tab */}
           {tab === 'history' && (
             <div className="space-y-1">
-              {history.length === 0 ? (
+              {narratedHistory.length === 0 ? (
                 <p className="text-xs text-text-dim py-2">No listening history yet.</p>
               ) : (
-                history.map(h => (
+                narratedHistory.map(h => (
                   <button
                     key={h.slug}
                     onClick={() => switchToBook(h.slug)}

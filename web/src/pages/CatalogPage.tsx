@@ -6,7 +6,7 @@ import { NavBar } from '../components/NavBar'
 import { getAllProgress, getProgressPercent } from '../hooks/useReadingProgress'
 import { getLibrary, LIBRARY_CHANGED_EVENT, type LibraryBook } from '../hooks/useLibrary'
 import { getSavedKokoroVoice, isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
-import { preparedCount, usePreparedManifest, type PreparedManifest } from '../hooks/preparedAudio'
+import { isNarrated, preparedCount, usePreparedManifest, type PreparedManifest } from '../hooks/preparedAudio'
 
 interface AiBookState {
   inLibrary: boolean
@@ -107,7 +107,7 @@ export function CatalogPage() {
               <span className="text-accent italic">Now With AI Voice</span>
             </h1>
             <p className="text-base md:text-xl text-text-muted max-w-2xl mb-6 md:mb-8">
-              Browse the catalog, listen with your browser's voice right away, and let your desktop generate natural AI voice in the background for offline listening.
+              Read any book in the catalog for free. Books marked ✦ AI can also be listened to, narrated by a natural AI voice.
             </p>
 
             <div className="space-y-3 md:space-y-0 md:flex md:flex-wrap md:gap-3 mb-4">
@@ -165,7 +165,7 @@ export function CatalogPage() {
             <div className="grid grid-cols-2 gap-3 mb-5">
               <StatCard label="Books AI-ready" value={String(totalReadyBooks)} />
               <StatCard label="AI chapters" value={String(totalReadyChapters)} />
-              <StatCard label="Queued here" value={String(library.length)} />
+              <StatCard label="Queued here" value={String(catalogWithAi.filter(({ ai }) => ai.inLibrary).length)} />
               <StatCard label="Desktop status" value={isDesktop ? (kokoroReady ? 'Ready' : 'Model needed') : 'Mobile'} />
             </div>
 
@@ -392,7 +392,9 @@ function AiStatusPills({
   )
 }
 
-function getAiBookState(libraryEntry: LibraryBook | undefined, manifest: PreparedManifest, slug: string): AiBookState {
+function getAiBookState(libraryEntry: LibraryBook | undefined, manifest: PreparedManifest | null, slug: string): AiBookState {
+  // Only narrated books can be listened to; none show as such while the manifest loads (books#19)
+  if (!manifest || !isNarrated(manifest, slug)) return { inLibrary: false, generatedCount: 0, readyCount: 0 }
   const generatedCount = libraryEntry?.generatedChapters || 0
 
   return {

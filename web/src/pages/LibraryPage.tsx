@@ -13,6 +13,7 @@ import {
 import { hasCachedAudio, cacheKey } from '../hooks/audioCache'
 import { isMobileDevice, KOKORO_VOICES, useKokoroReady } from '../hooks/useKokoro'
 import { CATALOG } from '../data/catalog'
+import { isNarrated, loadPreparedManifest } from '../hooks/preparedAudio'
 
 interface ChapterStatus {
   title: string
@@ -33,7 +34,9 @@ export function LibraryPage() {
 
   const loadLibrary = useCallback(async function loadLibrary() {
     setLoading(true)
-    const lib = getLibrary()
+    // Local generation is offered only for narrated books for now (books#19)
+    const manifest = await loadPreparedManifest()
+    const lib = getLibrary().filter(book => isNarrated(manifest, book.slug))
     const detailed: LibraryBookDetail[] = []
 
     for (const book of lib) {

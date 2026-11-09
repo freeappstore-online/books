@@ -9,7 +9,7 @@ import {
   subscribeKokoroRuntimeInfo,
   type KokoroRuntimeInfo,
 } from './useKokoro'
-import { isPrepared, loadPreparedManifest } from './preparedAudio'
+import { getLoadedManifest, isNarrated, isPrepared, loadPreparedManifest } from './preparedAudio'
 import {
   loadRate, saveRate, loadVoice, saveVoice, loadEngine, saveEngine,
   loadHistory, saveHistory, loadPosition, savePosition,
@@ -385,6 +385,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   }, [playing, halt, speakBrowser])
 
   const loadAndPlay = useCallback((newBook: AudioBook, startChapter?: number, charOffset?: number) => {
+    // Books without AI narration are reading-only (books#19)
+    const manifest = getLoadedManifest()
+    if (!manifest || !isNarrated(manifest, newBook.slug)) return
     const saved = loadPosition(newBook.slug)
     const idx = startChapter ?? saved.chapterIdx
     // Continue mid-chapter when asked to play the chapter the saved position is in
