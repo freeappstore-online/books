@@ -210,6 +210,12 @@ export async function expectPlaying(page: Page, idx: number, from = 0.3, timeout
 export const bar = (page: Page) => page.locator('.fixed.bottom-0')
 export const headerPlay = (page: Page) => page.locator('header').getByRole('button', { name: 'Play', exact: true })
 
+/** On phones Save offline, text size and theme are behind the reader's "More" button (books#25). */
+export async function openReaderMore(page: Page) {
+  const more = page.getByRole('button', { name: 'More reading options' })
+  if (await more.isVisible()) await more.click()
+}
+
 /** Open the reader at chapter `idx` (sidebar on wide screens, chapter drawer on phones). */
 export async function openChapter(page: Page, idx: number) {
   const aside = page.locator('aside button').nth(idx)

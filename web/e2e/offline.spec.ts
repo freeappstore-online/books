@@ -1,4 +1,4 @@
-import { test, expect, stubHuggingFace, audio, headerPlay, marks, alice, SLUG } from './fixtures'
+import { test, expect, stubHuggingFace, audio, headerPlay, marks, alice, openReaderMore, SLUG } from './fixtures'
 
 // Playwright routes service worker requests in Chromium only; elsewhere the page saves and plays without one
 test.use({ serviceWorkers: async ({ browserName }, use) => use(browserName === 'chromium' ? 'allow' : 'block') })
@@ -11,6 +11,7 @@ test('save offline, then play from the saved copy with no network', async ({ con
   }
   await page.goto(`/read/${SLUG}`)
   await page.waitForSelector('article h2')
+  await openReaderMore(page)
   await page.getByRole('button', { name: /Save offline/ }).click()
   await expect(page.getByText('✓ Saved offline')).toBeVisible({ timeout: 30_000 })
   expect(hf.requests.filter(p => p.endsWith('.m4a'))).toHaveLength(alice.chapters.length)

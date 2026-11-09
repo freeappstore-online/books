@@ -1,4 +1,4 @@
-import { test, expect, stubHuggingFace, SLUG } from './fixtures'
+import { test, expect, stubHuggingFace, openReaderMore, SLUG } from './fixtures'
 
 test('book text size and interface text size change separately and are kept', async ({ context, baseURL, page }) => {
   await stubHuggingFace(context, baseURL!)
@@ -9,6 +9,7 @@ test('book text size and interface text size change separately and are kept', as
   const rootSize = () => page.evaluate(() => document.documentElement.style.fontSize)
   expect(await bookSize()).toBe('17px')
 
+  await openReaderMore(page)
   await page.getByRole('button', { name: 'Text size' }).click()
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Larger book text size' }).click()
   expect(await bookSize()).toBe('20px')
