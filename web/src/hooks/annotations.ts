@@ -31,14 +31,26 @@ export interface Annotation {
 
 type Store = Record<string, Annotation[]>
 
-let store: Store = (() => {
+function load(): Store {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch { return {} }
-})()
+}
+
+let store: Store = load()
 const listeners = new Set<() => void>()
 
+// Another tab (or the installed app beside the browser) changed them
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', e => {
+    if (e.key !== KEY && e.key !== null) return
+    store = load()
+    for (const listener of listeners) listener()
+  })
+}
+
+/** Read-modify-write from storage, so a change made in another tab isn't overwritten. */
 function update(slug: string, fn: (list: Annotation[]) => Annotation[]) {
+  store = load()
   const list = fn(store[slug] ?? [])
-  store = { ...store }
   if (list.length) store[slug] = list
   else delete store[slug]
   try { localStorage.setItem(KEY, JSON.stringify(store)) } catch {}

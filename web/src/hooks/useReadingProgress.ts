@@ -31,13 +31,25 @@ export function saveProgress(slug: string, chapterIdx: number, totalChapters: nu
 }
 
 // ── Finished books: slug → when it was marked finished ──
-let finished: Record<string, number> = (() => {
+function loadFinished(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem(FINISHED_KEY) || '{}') } catch { return {} }
-})()
+}
+
+let finished = loadFinished()
 const finishedListeners = new Set<() => void>()
 
+// Marked in another tab (or the installed app beside the browser)
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', e => {
+    if (e.key !== FINISHED_KEY && e.key !== null) return
+    finished = loadFinished()
+    for (const listener of finishedListeners) listener()
+  })
+}
+
+/** Read-modify-write from storage, so a book marked in another tab isn't unmarked. */
 export function setFinished(slug: string, done: boolean) {
-  finished = { ...finished }
+  finished = loadFinished()
   if (done) finished[slug] = Date.now()
   else delete finished[slug]
   try { localStorage.setItem(FINISHED_KEY, JSON.stringify(finished)) } catch {}
