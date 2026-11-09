@@ -78,13 +78,13 @@ export function AudioPlayer() {
       {expanded && (
         <div id="player-panel" className="border-b border-border px-4 py-3 max-w-4xl mx-auto max-h-64 overflow-y-auto">
           {/* Tabs */}
-          <div className="flex gap-4 mb-3 border-b border-border pb-2">
+          <div className="flex gap-4 mb-3 border-b border-border">
             {(['chapters', 'history'] as const).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 aria-pressed={tab === t}
-                className={`text-xs font-semibold uppercase tracking-wider transition ${
+                className={`py-2 text-xs font-semibold uppercase tracking-wider transition ${
                   tab === t ? 'text-accent' : 'text-text-dim hover:text-text-muted'
                 }`}
               >
@@ -101,7 +101,7 @@ export function AudioPlayer() {
                   key={ch.id}
                   onClick={() => setChapter(i)}
                   aria-current={i === chapterIdx ? 'true' : undefined}
-                  className={`px-2 py-1 text-xs rounded transition ${
+                  className={`min-w-[40px] h-[40px] px-2 text-sm rounded transition ${
                     i === chapterIdx
                       ? 'bg-accent text-btn-text font-semibold'
                       : 'bg-surface-hover text-text-muted hover:text-text'
@@ -163,37 +163,38 @@ export function AudioPlayer() {
             onBlur={commitScrub}
             aria-label="Position in chapter"
             aria-valuetext={`${formatTime(time)} of ${formatTime(duration)}`}
-            className="flex-1 h-1 accent-accent cursor-pointer"
+            className="flex-1 h-6 accent-accent cursor-pointer"
           />
           <span className="w-12" aria-hidden="true">-{formatTime(Math.max(0, duration - time))}</span>
         </div>
       )}
 
-      {/* Main bar */}
-      <div className="px-3 md:px-4 py-2 max-w-4xl mx-auto flex items-center gap-2 md:gap-3">
+      {/* Main bar; on phones the book takes a line of its own above the controls. Touch targets
+          are 40 px, not rem, so the controls still fit a phone at the largest interface size */}
+      <div className="px-3 md:px-4 py-1 sm:py-2 max-w-4xl mx-auto flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-2 md:gap-x-3">
         {/* Book info */}
         <button
           onClick={() => navigate(`/read/${book.slug}`)}
-          className="flex-1 min-w-0 text-left"
+          className="basis-full sm:basis-auto sm:flex-1 min-w-0 text-left flex items-baseline gap-2 sm:block"
         >
-          <div className="text-sm font-semibold truncate">{book.title}</div>
-          <div className="text-xs text-text-muted truncate">
-            {chapter?.title} · Ch {chapterIdx + 1}/{totalChapters}
+          <div className="text-sm font-semibold truncate min-w-0">{book.title}</div>
+          <div className="text-xs text-text-muted truncate shrink-0 sm:shrink">
+            <span className="hidden sm:inline">{chapter?.title} · </span>Ch {chapterIdx + 1}/{totalChapters}
           </div>
         </button>
 
         {/* Controls */}
         <div className="flex items-center gap-0">
           <button onClick={prevChapter} disabled={chapterIdx === 0}
-            className="hidden sm:block p-2.5 text-text-muted hover:text-text disabled:opacity-30 transition" title="Previous chapter (Shift+←)" aria-label="Previous chapter" aria-keyshortcuts="Shift+ArrowLeft">
+            className="hidden sm:flex w-[40px] h-[40px] items-center justify-center text-text-muted hover:text-text disabled:opacity-30 transition" title="Previous chapter (Shift+←)" aria-label="Previous chapter" aria-keyshortcuts="Shift+ArrowLeft">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
           </button>
           <button onClick={() => skip(-15)} disabled={!seekable}
-            className="p-1.5 sm:p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Back 15 seconds (←)" aria-label="Back 15 seconds" aria-keyshortcuts="ArrowLeft">
+            className="w-[40px] h-[40px] flex items-center justify-center text-text-muted hover:text-text disabled:opacity-30 transition" title="Back 15 seconds (←)" aria-label="Back 15 seconds" aria-keyshortcuts="ArrowLeft">
             <SkipIcon seconds={15} back />
           </button>
           <button onClick={playing ? pause : play}
-            className="p-2 w-11 h-11 rounded-full bg-accent text-btn-text hover:bg-accent-hover transition flex items-center justify-center"
+            className="p-2 w-[44px] h-[44px] shrink-0 rounded-full bg-accent text-btn-text hover:bg-accent-hover transition flex items-center justify-center"
             title={playing ? 'Pause (Space)' : 'Resume (Space)'} aria-label={playing ? 'Pause' : 'Resume'} aria-keyshortcuts="Space K">
             {loading ? (
               <div className="w-5 h-5 border-2 border-btn-text border-t-transparent rounded-full animate-spin" />
@@ -204,11 +205,11 @@ export function AudioPlayer() {
             )}
           </button>
           <button onClick={() => skip(30)} disabled={!seekable}
-            className="p-1.5 sm:p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Forward 30 seconds (→)" aria-label="Forward 30 seconds" aria-keyshortcuts="ArrowRight">
+            className="w-[40px] h-[40px] flex items-center justify-center text-text-muted hover:text-text disabled:opacity-30 transition" title="Forward 30 seconds (→)" aria-label="Forward 30 seconds" aria-keyshortcuts="ArrowRight">
             <SkipIcon seconds={30} />
           </button>
           <button onClick={nextChapter} disabled={chapterIdx >= totalChapters - 1}
-            className="hidden sm:block p-2.5 text-text-muted hover:text-text disabled:opacity-30 transition" title="Next chapter (Shift+→)" aria-label="Next chapter" aria-keyshortcuts="Shift+ArrowRight">
+            className="hidden sm:flex w-[40px] h-[40px] items-center justify-center text-text-muted hover:text-text disabled:opacity-30 transition" title="Next chapter (Shift+→)" aria-label="Next chapter" aria-keyshortcuts="Shift+ArrowRight">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
           </button>
         </div>
@@ -218,7 +219,7 @@ export function AudioPlayer() {
 
         {/* Expand toggle */}
         <button onClick={() => setExpanded(!expanded)}
-          className="p-2 sm:p-2.5 text-text-muted hover:text-text transition"
+          className="w-[40px] h-[40px] flex items-center justify-center text-text-muted hover:text-text transition"
           aria-expanded={expanded} aria-controls="player-panel"
           aria-label={expanded ? 'Hide chapters' : 'Show chapters'}>
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -271,7 +272,7 @@ function SpeedButton({ rate, setRate }: { rate: number; setRate: (r: number) => 
         onPointerUp={() => clearTimeout(pressTimer.current)}
         onPointerLeave={() => clearTimeout(pressTimer.current)}
         onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}
-        className="min-w-9 sm:min-w-11 px-1 sm:px-1.5 py-2 text-xs font-semibold tabular-nums text-text-muted hover:text-text transition select-none"
+        className="min-w-[40px] sm:min-w-11 h-[40px] px-1 sm:px-1.5 text-xs font-semibold tabular-nums text-text-muted hover:text-text transition select-none [-webkit-touch-callout:none]"
         title="Speed (hold for all speeds; [ and ] step it)"
         aria-label={`Speed ${rate}x`}
         aria-keyshortcuts="[ ]"
@@ -314,7 +315,7 @@ function SleepButton({ timer, start, extend, cancel }: {
         onClick={() => setMenuOpen(!menuOpen)}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className={`flex items-center gap-1 p-1.5 sm:p-2 text-xs font-semibold tabular-nums transition ${timer ? 'text-accent' : 'text-text-muted hover:text-text'}`}
+        className={`flex items-center justify-center gap-1 min-w-[40px] h-[40px] px-2 text-xs font-semibold tabular-nums transition ${timer ? 'text-accent' : 'text-text-muted hover:text-text'}`}
         title="Sleep timer"
         aria-label={timer ? `Sleep timer: ${timer.choice === 'chapter' ? 'end of chapter' : formatTime(timer.remaining / 1000)}` : 'Sleep timer'}
       >

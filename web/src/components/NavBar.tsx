@@ -72,7 +72,7 @@ export function NavBar({ title, subtitle, actions }: Props) {
 
         {/* Right: actions (own row below lg) */}
         {actions && (
-          <div className="order-last lg:order-none w-full lg:w-auto flex items-center justify-end gap-2 md:gap-3 shrink-0">
+          <div className="order-last lg:order-none w-full lg:w-auto flex flex-wrap items-center justify-end gap-2 md:gap-3 shrink-0">
             {actions}
           </div>
         )}
