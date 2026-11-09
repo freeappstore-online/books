@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react'
 import { CATALOG } from '../data/catalog'
 import { coverUrl } from '../components/BookCover'
-import { MANIFEST_URL, preparedUrl, type PreparedManifest } from './preparedAudio'
+import { MANIFEST_URL, preparedUrl, preparedTimingsUrl, type PreparedManifest } from './preparedAudio'
 
 const CACHE = 'books-offline-v1'
 const SAVED_KEY = 'bp-offline-books'
@@ -58,10 +58,6 @@ export function savedBytes(book: SavedBook): number {
 /** Narration chapters saved for this book. */
 export function savedAudioChapters(book: SavedBook): number {
   return Object.keys(book.files).filter(url => url.endsWith('.m4a')).length
-}
-
-export function timingsUrl(slug: string, chapterIdx: number, voice: string): string {
-  return preparedUrl(slug, chapterIdx, voice).replace(/\.m4a$/, '.timings.json')
 }
 
 /** The saved copy of a URL, if this device has one. */
@@ -148,7 +144,7 @@ export async function saveBook(slug: string, voice: string) {
       }
       await store(audio, true)
       // Word timings sit next to each chapter; most chapters may not have them yet
-      await store(timingsUrl(slug, i, voice), false)
+      await store(preparedTimingsUrl(slug, i, voice), false)
     }
     setSavedBook(slug, { voice: narrated ? voice : null, files, savedAt: Date.now() })
   } catch (err) {

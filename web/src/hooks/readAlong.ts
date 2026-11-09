@@ -6,6 +6,7 @@
  * time over its words by syllable count.
  */
 import { preparedTimingsUrl } from './preparedAudio'
+import { fetchSavedOr } from './offlineBooks'
 
 /** Char range [start, end) in the chapter content. */
 export type CharRange = [number, number]
@@ -26,7 +27,8 @@ export function loadTimings(slug: string, chapterIdx: number, voice: string): Pr
   const url = preparedTimingsUrl(slug, chapterIdx, voice)
   let p = timingsCache.get(url)
   if (!p) {
-    p = fetch(url)
+    // Saved books keep their timings on the device (offline reading)
+    p = fetchSavedOr(url)
       .then(r => (r.ok ? r.json() : null))
       .then(d => (Array.isArray(d?.segments) && d.segments.length > 0 ? d.segments as TimingSegment[] : null))
       .catch(() => null)
