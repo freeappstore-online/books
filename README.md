@@ -18,7 +18,7 @@ In `web/` (CI runs all of them on every push and pull request: `.github/workflow
 
 ```bash
 pnpm exec tsc -b          # typecheck, app and tests
-pnpm test:unit            # Vitest: read-along, narration manifest, positions, text sizes, offline helpers
+pnpm test                 # Vitest (unit; also run by the deploy before it builds): read-along, narration manifest, positions, text sizes, offline helpers
 pnpm exec playwright install chromium firefox webkit   # once
 pnpm test:e2e             # Playwright: builds, serves the build, runs every project
 pnpm test:e2e --project=chromium   # one project: chromium, firefox, webkit (iPhone 13) or edge

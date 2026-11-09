@@ -5,10 +5,11 @@ name: Tests
 # chromium, firefox, webkit (iPhone 13) and edge (offline and app-update edge
 # cases, Chromium with the service worker). How to run them: "Tests" in README.md.
 #
-# The deploy (deploy.yml) is the platform's pinned reusable workflow and runs
-# on its own: a job can't wait for a job in another workflow file, and
-# deploy.yml must stay as `fas publish` generates it. A red run here is the
-# signal to fix or revert.
+# The deploy (deploy.yml) is the platform's pinned reusable workflow and can't
+# wait for these jobs (a job can't need a job in another workflow file, and
+# deploy.yml must stay as `fas publish` generates it). It does run the root
+# `pnpm test` before building, so the unit tests gate the deploy; `pnpm test`
+# must therefore stay browser-free. A red e2e run here is the signal to fix or revert.
 
 on:
   push:
@@ -43,7 +44,7 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc -b
       - name: Unit tests
-        run: pnpm test:unit
+        run: pnpm test
 
   e2e:
     name: E2E (${{ matrix.project }})
