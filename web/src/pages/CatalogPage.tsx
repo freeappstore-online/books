@@ -227,7 +227,7 @@ function BookListItem({ book, narrated, saved, online, progress, finished }: {
           {book.tags.slice(0, 3).map(t => (
             <span key={t} className="text-[11px] md:text-xs px-1.5 md:px-2 py-0.5 rounded-full border border-border text-text-dim">{t}</span>
           ))}
-          <span className="text-[11px] md:text-xs text-text-dim ml-auto flex items-center gap-2">
+          <span className="text-[11px] md:text-xs text-text-dim ml-auto flex flex-wrap justify-end items-center gap-x-2">
             {saved && <span className="text-success">✓ Saved offline</span>}
             {!saved && !online && <span>Not saved: unavailable offline</span>}
             {!finished && pct > 0 && (
