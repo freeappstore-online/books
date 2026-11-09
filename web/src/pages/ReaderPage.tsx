@@ -7,6 +7,7 @@ import { SaveOfflineButton, SaveOfflineError } from '../components/SaveOfflineBu
 import { fetchSavedOr, playableManifest, useOnline } from '../hooks/offlineBooks'
 import { ChapterText, textOffset, topInset, type TextMark } from '../components/ChapterText'
 import { BookSearch, SEARCH_INPUT_ID } from '../components/BookSearch'
+import { KEEPS_KEYS } from '../components/KeyboardShortcuts'
 import type { SearchHit } from '../hooks/bookSearch'
 import { AnnotationEditor, AnnotationList, BookmarkIcon, HighlightToolbar } from '../components/Annotations'
 import {
@@ -257,8 +258,7 @@ export function ReaderPage() {
     const onKey = (e: KeyboardEvent) => {
       // KeyboardShortcuts focuses the field while it is open; this opens it
       if (e.key !== '/' || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
-      const t = e.target as HTMLElement | null
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return
+      if ((e.target as HTMLElement | null)?.closest?.(KEEPS_KEYS)) return
       e.preventDefault()
       setSearchOpen(true)
       document.getElementById(SEARCH_INPUT_ID)?.focus()

@@ -1,7 +1,7 @@
 // Keyboard-only use (books#15): shortcuts, focus rings, menus and dialogs.
 // Desktop engines only: phones have no keyboard shortcuts.
 import {
-  test, expect, stubHuggingFace, audio, axeViolations, bar, chapterOf, expectPlaying, headerPlay, jumpOf, SLUG,
+  test, expect, stubHuggingFace, audio, axeViolations, bar, chapterOf, expectPlaying, headerPlay, jumpOf, selectText, SLUG,
 } from './fixtures'
 import type { Page } from '@playwright/test'
 
@@ -152,6 +152,45 @@ test('reading-only book: Space plays nothing, "/" opens the in-book search', asy
   expect((await focused(page)).label).toBe('Search in this book')
   await page.keyboard.type('k ')
   await expect(page.locator('#reader-search')).toHaveValue('k ')
+})
+
+test('Space scrolls the page where there is nothing to play (books#26)', async ({ page }) => {
+  for (const path of ['/', '/read/dracula']) {
+    await page.goto(path)
+    await page.waitForLoadState('networkidle')
+    await blur(page)
+    await page.keyboard.press(' ')
+    await expect.poll(() => page.evaluate(() => window.scrollY), { message: `${path}: Space scrolls` }).toBeGreaterThan(0)
+  }
+})
+
+test('shortcuts leave the highlight toolbar and editor alone (books#26)', async ({ page }) => {
+  await page.goto(`/read/${SLUG}`)
+  await headerPlay(page).click()
+  await expectPlaying(page, 0)
+
+  // The highlight toolbar: keys pressed on its buttons are not shortcuts
+  await selectText(page, 5000, 5010)
+  const toolbar = page.getByRole('toolbar', { name: 'Highlight' })
+  await expect(toolbar).toBeVisible()
+  await toolbar.getByRole('button').first().focus()
+  for (const key of ['k', '?', '/']) await page.keyboard.press(key)
+  expect((await audio(page))!.paused, 'k on the toolbar does not pause').toBe(false)
+  await expect(page.locator('dialog[open]')).toHaveCount(0)
+  await expect(page.locator('#reader-search')).toHaveCount(0)
+
+  // The highlight editor (a div role=dialog): arrows, k, ? and / are its own
+  await toolbar.getByRole('button', { name: 'Note' }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit highlight' })
+  await expect(editor).toBeVisible()
+  await editor.getByRole('radio', { name: 'Green' }).focus()
+  const t = (await audio(page))!.t
+  for (const key of ['ArrowRight', 'k', '?', '/']) await page.keyboard.press(key)
+  const a = (await audio(page))!
+  expect(a.paused, 'k in the editor does not pause').toBe(false)
+  expect(a.t - t, '→ in the editor does not skip 30 s').toBeLessThan(5)
+  await expect(page.locator('dialog[open]'), '? opens no second modal').toHaveCount(0)
+  await expect(page.locator('#reader-search'), '/ opens no search behind it').toHaveCount(0)
 })
 
 test.describe('reduced motion', () => {

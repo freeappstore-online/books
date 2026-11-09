@@ -302,3 +302,25 @@ export async function axeViolations(page: Page): Promise<string[]> {
     return violations.map(v => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map(n => n.target.join(' ')).join(', ')}`)
   })
 }
+
+/** Select chapter text from char `start` to `end`, as a reader dragging over it would. */
+export const selectText = (page: Page, start: number, end: number) => page.evaluate(([a, b]) => {
+  const root = document.querySelector('[data-chapter-text]')!
+  const at = (offset: number): [Node, number] => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let off = 0
+    let n: Node | null
+    while ((n = walker.nextNode())) {
+      const len = n.textContent!.length
+      if (off + len > offset) return [n, offset - off]
+      off += len
+    }
+    throw new Error(`offset ${offset} is past the text`)
+  }
+  const r = document.createRange()
+  r.setStart(...at(a))
+  r.setEnd(...at(b))
+  ;(r.startContainer.parentElement as HTMLElement).scrollIntoView({ block: 'center', behavior: 'instant' })
+  getSelection()!.removeAllRanges()
+  getSelection()!.addRange(r)
+}, [start, end] as const)

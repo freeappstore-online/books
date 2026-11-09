@@ -19,6 +19,9 @@ const SHORTCUTS: [string[], string][] = [
   [['?'], 'Show these shortcuts'],
 ]
 
+/** Elements whose keys are their own, not shortcuts (also for the reader's "/"). */
+export const KEEPS_KEYS = 'input, textarea, select, [contenteditable="true"], [role="menu"], [role="toolbar"], [role="dialog"], dialog'
+
 export function KeyboardShortcuts() {
   const player = useAudioPlayer()
   const playerRef = useRef(player)
@@ -26,13 +29,18 @@ export function KeyboardShortcuts() {
   const dialogRef = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
-    const click = (name: string) => document.querySelector<HTMLElement>(`[data-shortcut="${name}"]`)?.click()
+    /** Click the page's control for a shortcut; false when the page has none. */
+    const click = (name: string) => {
+      const el = document.querySelector<HTMLElement>(`[data-shortcut="${name}"]`)
+      el?.click()
+      return Boolean(el)
+    }
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
       const target = e.target as HTMLElement
-      // Typing, a slider, a select or an open menu or dialog keeps its keys
-      if (target.closest('input, textarea, select, [contenteditable="true"], [role="menu"], dialog')) return
+      // Typing, a slider, a select or an open menu, toolbar or dialog keeps its keys
+      if (target.closest(KEEPS_KEYS)) return
       const p = playerRef.current
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
 
@@ -44,7 +52,8 @@ export function KeyboardShortcuts() {
           if (p.playing) p.pause()
           else p.play()
         } else {
-          click('play')
+          // No play control (nothing to listen to here): Space scrolls the page as usual
+          handled = click('play')
         }
       } else if ((key === 'ArrowLeft' || key === 'ArrowRight') && p.book) {
         const forward = key === 'ArrowRight'
