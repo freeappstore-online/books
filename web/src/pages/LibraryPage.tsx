@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { NavBar } from '../components/NavBar'
 import { BookCover } from '../components/BookCover'
 import { CATALOG } from '../data/catalog'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { booksInProgress, progressPercent, setFinished, useFinished } from '../hooks/useReadingProgress'
 import { ListenButton } from '../components/ListenButton'
+import { AnnotationList } from '../components/Annotations'
+import { annotationsMarkdown, downloadMarkdown, useAllAnnotations } from '../hooks/annotations'
 import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
 import {
-  checkSavedText, formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, updateReason,
+  checkSavedText, fetchSavedOr, formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, updateReason,
   useOfflineBooks, useOnline,
 } from '../hooks/offlineBooks'
 
@@ -32,6 +34,7 @@ export function LibraryPage() {
       <main className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <InProgress />
         <Finished />
+        <BookNotes />
         <SavedBooks />
       </main>
     </div>
@@ -113,6 +116,56 @@ function Finished() {
               Not finished
             </button>
           </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/** Every book's bookmarks, highlights and notes (books#11). */
+function BookNotes() {
+  const all = useAllAnnotations()
+  const navigate = useNavigate()
+  const books = CATALOG.filter(b => all[b.id]?.length)
+  if (books.length === 0) return null
+
+  const exportBook = async (slug: string, title: string, author: string) => {
+    // Chapter titles from the book, when it can be loaded
+    const titles = await fetchSavedOr(CATALOG.find(b => b.id === slug)!.contentPath)
+      .then(r => (r.ok ? r.json() : null))
+      .then((d: { chapters: { title: string }[] } | null) => d?.chapters.map(c => c.title) ?? [])
+      .catch(() => [])
+    downloadMarkdown(`${slug}-notes.md`, annotationsMarkdown(title, author, titles, all[slug]))
+  }
+
+  return (
+    <section className="bg-surface rounded-xl border border-border p-5 md:p-6 mb-6">
+      <h2 className="text-lg font-display mb-3">Bookmarks and notes</h2>
+      <div className="divide-y divide-border">
+        {books.map(book => (
+          <details key={book.id} className="py-2 group">
+            <summary className="cursor-pointer list-none flex items-center justify-between gap-3 py-1">
+              <span className="min-w-0">
+                <span className="block text-sm font-medium truncate">{book.title}</span>
+                <span className="block text-xs text-text-dim">{all[book.id].length} saved</span>
+              </span>
+              <span className="text-text-dim text-xs group-open:rotate-180 transition" aria-hidden="true">&#9662;</span>
+            </summary>
+            <div className="mt-1">
+              <AnnotationList
+                slug={book.id}
+                list={all[book.id]}
+                chapterTitles={[]}
+                onJump={a => navigate(`/read/${book.id}?ch=${a.chapterIdx}&at=${a.start}`)}
+              />
+              <button
+                onClick={() => exportBook(book.id, book.title, book.author)}
+                className="mt-2 text-xs text-accent hover:underline"
+              >
+                Export Markdown
+              </button>
+            </div>
+          </details>
         ))}
       </div>
     </section>

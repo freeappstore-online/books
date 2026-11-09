@@ -54,6 +54,8 @@ export function BookSearch({ chapters, onJump, onClose }: Props) {
         <div className="flex items-center gap-2">
           <input
             id={SEARCH_INPUT_ID}
+            data-shortcut="search"
+            aria-keyshortcuts="/"
             type="search"
             autoFocus
             value={query}

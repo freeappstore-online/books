@@ -6,6 +6,11 @@ import type { CharRange } from '../hooks/readAlong'
 const TOP_MARGIN = 48
 const BOTTOM_MARGIN = 140
 
+/** Bottom of the page's sticky top bar ([data-reader-top]), which covers the text under it. */
+export function topInset(): number {
+  return Math.max(0, document.querySelector('[data-reader-top]')?.getBoundingClientRect().bottom ?? 0)
+}
+
 /** Paragraphs that together are exactly `text`, so DOM text offsets stay chapter offsets. */
 function splitBlocks(text: string): { start: number; end: number; text: string }[] {
   const blocks: { start: number; end: number; text: string }[] = []
@@ -151,7 +156,8 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
     r.setStart(at.node, at.offset)
     r.setEnd(at.node, Math.min(at.offset + 1, at.node.textContent?.length ?? 0))
     const rect = r.getBoundingClientRect()
-    window.scrollTo({ top: window.scrollY + rect.top - window.innerHeight / 3, behavior: 'instant' })
+    const below = Math.max(window.innerHeight / 3, topInset() + TOP_MARGIN)
+    window.scrollTo({ top: window.scrollY + rect.top - below, behavior: 'instant' })
   }, [focus])
 
   // Keep the spoken line in view; scroll only once it leaves the comfortable area
@@ -163,7 +169,7 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
       ?? containerRef.current?.querySelector('[data-readalong="sentence"]')
     if (!el) return
     const rect = el.getBoundingClientRect()
-    if (rect.top >= TOP_MARGIN && rect.bottom <= window.innerHeight - BOTTOM_MARGIN) return
+    if (rect.top >= topInset() + TOP_MARGIN && rect.bottom <= window.innerHeight - BOTTOM_MARGIN) return
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
   }, [following, targetStart])
@@ -172,6 +178,7 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
     <>
       <div
         ref={containerRef}
+        data-chapter-text=""
         className={className}
         style={style}
         title={title}
