@@ -45,7 +45,8 @@ jobs:
 
   generate:
     needs: plan
-    if: needs.plan.outputs.matrix != '{"include": []}'
+    if: >-
+      needs.plan.outputs.matrix != '{"include": []}'
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
