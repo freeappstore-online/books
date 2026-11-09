@@ -12,6 +12,10 @@ pnpm install
 pnpm dev
 ```
 
+## Adding books
+
+See [docs/adding-books.md](docs/adding-books.md): text from Project Gutenberg, then pre-generated narration.
+
 ## Deploy
 
 Push to main — auto-deploys to R2 via GitHub Actions.
