@@ -4,14 +4,11 @@ import { NavBar } from '../components/NavBar'
 import { ReadingSettings } from '../components/ReadingSettings'
 import { ListeningSettings } from '../components/ListeningSettings'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
-import { getReaderFontSize, getUiScale } from '../hooks/usePreferences'
 import { getTheme, type Theme } from '../hooks/useTheme'
 import { formatBytes, savedBytes, useOfflineBooks } from '../hooks/offlineBooks'
 
 export function SettingsPage() {
   const player = useAudioPlayer()
-  const [readerFont, setReaderFont] = useState(getReaderFontSize)
-  const [uiScale, setUiScale] = useState(getUiScale)
   const [currentTheme, setCurrentTheme] = useState<Theme>(getTheme)
   const saved = Object.values(useOfflineBooks().saved)
 
@@ -23,10 +20,6 @@ export function SettingsPage() {
         <ReadingSettings
           currentTheme={currentTheme}
           setCurrentTheme={setCurrentTheme}
-          readerFont={readerFont}
-          setReaderFont={setReaderFont}
-          uiScale={uiScale}
-          setUiScale={setUiScale}
         />
 
         <ListeningSettings />

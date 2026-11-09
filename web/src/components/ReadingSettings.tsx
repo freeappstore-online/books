@@ -1,26 +1,12 @@
 import { type Theme, setTheme } from '../hooks/useTheme'
-import { READER_FONTS, UI_SCALES, setReaderFontSize, setUiScaleValue, applyUiScale } from '../hooks/usePreferences'
+import { TextSizeControls } from './TextSizeControls'
 
 interface ReadingSettingsProps {
   currentTheme: Theme
   setCurrentTheme: (t: Theme) => void
-  readerFont: number
-  setReaderFont: (size: number) => void
-  uiScale: number
-  setUiScale: (scale: number) => void
 }
 
-export function ReadingSettings({ currentTheme, setCurrentTheme, readerFont, setReaderFont, uiScale, setUiScale }: ReadingSettingsProps) {
-  function handleReaderFontChange(size: number) {
-    setReaderFont(size)
-    setReaderFontSize(size)
-  }
-
-  function handleUiScaleChange(scale: number) {
-    setUiScale(scale)
-    setUiScaleValue(scale)
-    applyUiScale(scale)
-  }
+export function ReadingSettings({ currentTheme, setCurrentTheme }: ReadingSettingsProps) {
 
   return (
     <div className="bg-surface rounded-xl border border-border p-5 md:p-6">
@@ -45,48 +31,7 @@ export function ReadingSettings({ currentTheme, setCurrentTheme, readerFont, set
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm text-text-muted mb-3">App Font Size</label>
-          <p className="text-xs text-text-dim mb-2">Scales all UI text: menus, buttons, labels.</p>
-          <div className="flex gap-2 flex-wrap">
-            {UI_SCALES.map(s => (
-              <button
-                key={s.value}
-                onClick={() => handleUiScaleChange(s.value)}
-                className={`px-3 py-2 rounded-lg text-sm transition ${
-                  uiScale === s.value
-                    ? 'bg-accent text-btn-text font-semibold'
-                    : 'bg-surface-hover text-text-muted hover:text-text'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm text-text-muted mb-3">Book Text Size</label>
-          <p className="text-xs text-text-dim mb-2">Only affects book reading text, not the rest of the app.</p>
-          <div className="flex gap-2 flex-wrap">
-            {READER_FONTS.map(s => (
-              <button
-                key={s.value}
-                onClick={() => handleReaderFontChange(s.value)}
-                className={`px-3 py-2 rounded-lg text-sm transition ${
-                  readerFont === s.value
-                    ? 'bg-accent text-btn-text font-semibold'
-                    : 'bg-surface-hover text-text-muted hover:text-text'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-3 text-text-muted rounded-lg bg-page p-3" style={{ fontSize: `${readerFont}px` }}>
-            Preview book text at {readerFont}px
-          </p>
-        </div>
+        <TextSizeControls />
       </div>
     </div>
   )

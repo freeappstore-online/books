@@ -6,7 +6,8 @@ import { PlayButton } from '../components/PlayButton'
 import { SaveOfflineButton } from '../components/SaveOfflineButton'
 import { fetchSavedOr } from '../hooks/offlineBooks'
 import { ChapterText } from '../components/ChapterText'
-import { getReaderFontSize } from '../hooks/usePreferences'
+import { useReaderFontSize } from '../hooks/usePreferences'
+import { TextSizeControls } from '../components/TextSizeControls'
 import { saveProgress, getProgress } from '../hooks/useReadingProgress'
 import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
 import { CATALOG } from '../data/catalog'
@@ -28,7 +29,8 @@ export function ReaderPage() {
   const [loading, setLoading] = useState(true)
   const [notSavedOffline, setNotSavedOffline] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [fontSize] = useState(getReaderFontSize)
+  const fontSize = useReaderFontSize()
+  const [textPanelOpen, setTextPanelOpen] = useState(false)
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const themeStyle = THEME_STYLES[theme]
 
@@ -181,6 +183,25 @@ export function ReaderPage() {
         subtitle={bookAuthor ? `${bookAuthor} · ${bookGenre}` : bookGenre}
         actions={<>
           <SaveOfflineButton slug={slug || ''} />
+          <div className="relative">
+            <button
+              onClick={() => setTextPanelOpen(o => !o)}
+              aria-expanded={textPanelOpen}
+              aria-label="Text size"
+              title="Text size"
+              className={`px-2.5 py-1.5 rounded-lg text-sm border border-border transition ${textPanelOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
+            >
+              <span className="text-xs">A</span><span className="text-base font-semibold">A</span>
+            </button>
+            {textPanelOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setTextPanelOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-xl text-left">
+                  <TextSizeControls preview={false} />
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="md:hidden px-2.5 py-1.5 rounded-lg text-xs text-text-muted border border-border"
