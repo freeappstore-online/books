@@ -14,7 +14,7 @@ export function ReadingSettings({ currentTheme, setCurrentTheme }: ReadingSettin
       <div className="space-y-4">
         <div>
           <div id="theme-label" className="block text-sm text-text-muted mb-3">Reading Theme</div>
-          <div role="group" aria-labelledby="theme-label" className="flex gap-2">
+          <div role="group" aria-labelledby="theme-label" className="flex flex-wrap gap-2">
             {(['dark', 'light', 'sepia'] as Theme[]).map(t => (
               <button
                 key={t}

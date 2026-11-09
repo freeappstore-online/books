@@ -8,7 +8,7 @@ interface Props {
 }
 
 const sizes = {
-  sm: { w: 'w-28', h: 'h-40', title: 'text-xs', author: 'text-[10px]' },
+  sm: { w: 'w-20 sm:w-28', h: 'h-28 sm:h-40', title: 'text-xs', author: 'text-[10px]' },
   md: { w: 'w-36', h: 'h-52', title: 'text-sm', author: 'text-xs' },
   // Grid covers: shrink to the column on phones (a fixed 12rem overlapped the next one)
   lg: { w: 'w-full max-w-48', h: 'aspect-[12/17]', title: 'text-base', author: 'text-sm' },

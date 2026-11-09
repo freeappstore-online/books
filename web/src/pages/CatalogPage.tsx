@@ -210,9 +210,10 @@ function BookListItem({ book, narrated, saved, online, progress, finished }: {
     >
       <BookCover book={book} size="sm" />
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-3">
+        {/* Wraps (and long words break) when the interface text is large on a phone */}
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
           <div className="min-w-0">
-            <h3 className="font-display text-base md:text-lg group-hover:text-accent transition">{book.title}</h3>
+            <h3 className="font-display text-base md:text-lg [overflow-wrap:anywhere] group-hover:text-accent transition">{book.title}</h3>
             <p className="text-xs md:text-sm text-text-muted mt-0.5">{book.author} &middot; {formatYear(book.year)} &middot; {book.genre}</p>
           </div>
           {narrated && <AudiobookPill />}
