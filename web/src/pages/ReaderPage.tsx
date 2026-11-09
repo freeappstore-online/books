@@ -363,7 +363,10 @@ export function ReaderPage() {
   return (
     <div className="min-h-dvh bg-page text-text">
       {/* Stays on screen while reading, so bookmarking, search and the chapter list are always at hand */}
-      <div data-reader-top="" className="sticky top-0 z-30 bg-page">
+      {/* Below lg the header has two rows: only the actions row stays, so phones keep their reading
+          area; the negative top is the first row's height less the row gap (rem, so it follows the interface size).
+          Below the status bar/notch in the installed iPhone app. */}
+      <div data-reader-top="" className="sticky top-[calc(env(safe-area-inset-top)-3.125rem)] md:top-[calc(env(safe-area-inset-top)-3.25rem)] lg:top-[env(safe-area-inset-top)] z-30 bg-page">
         <NavBar
           title={bookTitle}
           subtitle={bookAuthor ? `${bookAuthor} · ${bookGenre}` : bookGenre}
