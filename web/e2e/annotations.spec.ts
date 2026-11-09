@@ -1,5 +1,5 @@
 // Bookmarks, highlights and the reading position (books#11, books#26).
-import { test, expect, stubHuggingFace, alice, selectText, SLUG } from './fixtures'
+import { test, expect, stubHuggingFace, alice, audio, expectPlaying, headerPlay, marks, selectText, SLUG } from './fixtures'
 import type { Page } from '@playwright/test'
 
 const PROGRESS = { [SLUG]: { chapterIdx: 5, totalChapters: 12, scroll: 0.5, fraction: 0.45, lastRead: 1 } }
@@ -58,6 +58,36 @@ test('highlights follow their text after it changed; one whose text is gone is l
   await page.getByRole('button', { name: 'Bookmarks and notes' }).click()
   await expect(page.getByRole('region', { name: 'Bookmarks and notes' }).getByRole('listitem')
     .filter({ hasText: 'Words no longer in the book' })).toContainText('Text changed')
+})
+
+test('text can be selected and highlighted in the paragraph being read aloud', async ({ page }) => {
+  await page.goto(`/read/${SLUG}`)
+  await headerPlay(page).click()
+  await expectPlaying(page, 0)
+  await page.waitForSelector('[data-readalong="word"]')
+  // Ahead of the spoken word in the same paragraph, so the word moves through it meanwhile
+  const at = await page.evaluate(() => {
+    const root = document.querySelector('[data-chapter-text]')!
+    const r = document.createRange()
+    r.setStart(root, 0)
+    r.setEndBefore(document.querySelector('[data-readalong="word"]')!)
+    return r.toString().length
+  })
+  const [start, end] = [at + 10, at + 70]
+  const words = alice.chapters[0].content.slice(start, end)
+  expect(words, 'one paragraph').not.toContain('\n\n')
+  await selectText(page, start, end)
+  const toolbar = page.getByRole('toolbar', { name: 'Highlight' })
+  await expect(toolbar).toBeVisible()
+  // The narration reads on through the selection (timings: 60 chars a second)
+  await page.waitForTimeout(2000)
+  expect(await page.evaluate(() => getSelection()!.toString()), 'selection kept').toBe(words)
+  expect((await audio(page))!.paused).toBe(false)
+  await toolbar.getByRole('button', { name: 'Highlight pink' }).click()
+  const saved = (await stored(page, 'bp-annotations'))[SLUG]
+  expect(saved.map((a: { start: number; end: number; text: string }) => [a.start, a.end, a.text])).toEqual([[start, end, words.trim()]])
+  // Released: the read-along moves on in that paragraph again
+  await expect.poll(async () => (await marks(page)).word).toBeTruthy()
 })
 
 test('excerpt fallback keeps the reading position and shows or makes no annotations', async ({ context, page }) => {

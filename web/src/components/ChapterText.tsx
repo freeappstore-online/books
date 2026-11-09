@@ -128,6 +128,29 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
 
   useEffect(() => { setFollowing(true) }, [chapterIdx])
 
+  // Text the reader is selecting, in chapter offsets. Re-rendering a paragraph replaces its
+  // text nodes and loses the selection, so the read-along stands still in the paragraphs it
+  // covers until it is cleared (books#26)
+  const [selected, setSelected] = useState<[number, number] | null>(null)
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+  useEffect(() => {
+    const onChange = () => {
+      const sel = window.getSelection()
+      const container = containerRef.current
+      const range = sel && !sel.isCollapsed && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
+      const next: [number, number] | null = range && container && container.contains(range.commonAncestorContainer)
+        ? [textOffset(container, range.startContainer, range.startOffset), textOffset(container, range.endContainer, range.endOffset)]
+        : null
+      setSelected(prev => (prev?.[0] === next?.[0] && prev?.[1] === next?.[1] ? prev : next))
+    }
+    document.addEventListener('selectionchange', onChange)
+    return () => document.removeEventListener('selectionchange', onChange)
+  }, [])
+  // What each paragraph last showed of the read-along, to keep while it is selected
+  const shown = useRef<{ blocks: typeof blocks; at: number[][] }>({ blocks, at: [] })
+  if (shown.current.blocks !== blocks) shown.current = { blocks, at: [] }
+
   // Scrolling by hand stops following until "Follow audio" (or a click on the text)
   useEffect(() => {
     const stop = () => { if (hasHighlightRef.current) setFollowing(false) }
@@ -164,7 +187,8 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
   const target = hl?.word ?? hl?.sentence
   const targetStart = target?.[0] ?? -1
   useEffect(() => {
-    if (!following || targetStart < 0) return
+    // Nor while the reader selects text: the selection would scroll away
+    if (!following || targetStart < 0 || selectedRef.current) return
     const el = containerRef.current?.querySelector('[data-readalong="word"]')
       ?? containerRef.current?.querySelector('[data-readalong="sentence"]')
     if (!el) return
@@ -186,8 +210,9 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
         onClick={e => { setFollowing(true); onClick?.(e) }}
       >
         {blocks.map(({ start, end, text }, i) => {
-          const [s0, s1] = clip(hl?.sentence ?? null, start, end)
-          const [w0, w1] = clip(hl?.word ?? null, start, end)
+          const frozen = selected && selected[0] < end && selected[1] > start ? shown.current.at[i] : undefined
+          const [s0, s1, w0, w1] = frozen ?? [...clip(hl?.sentence ?? null, start, end), ...clip(hl?.word ?? null, start, end)]
+          shown.current.at[i] = [s0, s1, w0, w1]
           return <Block key={start} text={text} s0={s0} s1={s1} w0={w0} w1={w1} marks={blockMarks[i]} />
         })}
       </div>
