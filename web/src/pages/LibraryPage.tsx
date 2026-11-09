@@ -11,7 +11,7 @@ import { annotationsMarkdown, downloadMarkdown, useAllAnnotations } from '../hoo
 import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
 import {
   checkSavedText, fetchSavedOr, formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, updateReason,
-  useOfflineBooks, useOnline,
+  useOfflineBooks, useOnline, usePlayableManifest,
 } from '../hooks/offlineBooks'
 
 /**
@@ -44,6 +44,8 @@ export function LibraryPage() {
 function InProgress() {
   const { history } = useAudioPlayer()
   const manifest = usePreparedManifest()
+  // Offline, only books saved on this device can be listened to (books#24), as PlayButton
+  const playable = usePlayableManifest()
   const finished = useFinished()
   const books = booksInProgress(history, manifest, finished)
     .flatMap(p => {
@@ -81,7 +83,7 @@ function InProgress() {
                 <Link to={`/read/${book.id}`} className="min-h-10 inline-flex items-center rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-btn-text hover:bg-accent-hover transition">
                   Resume
                 </Link>
-                {manifest && isNarrated(manifest, book.id) && (
+                {playable && isNarrated(playable, book.id) && (
                   <ListenButton book={book} className="min-h-10 inline-flex items-center rounded-lg border border-border px-4 py-1.5 text-xs font-semibold text-text-muted hover:text-text transition" />
                 )}
               </div>
