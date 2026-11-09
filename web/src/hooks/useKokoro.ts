@@ -269,8 +269,34 @@ function splitSentences(text: string): string[] {
 
 // ── Streaming playback ──
 
-/** Where each prepared chapter was stopped, so pause/play and rate changes resume instead of restarting. */
-const preparedPositions = new Map<string, number>()
+// ── Prepared narration (Hugging Face) ──
+
+/** Where each prepared chapter was stopped (seconds by URL), kept across reloads. */
+const POSITIONS_KEY = 'bp-prepared-positions'
+function loadPreparedPositions(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(POSITIONS_KEY) || '{}') } catch { return {} }
+}
+function savePreparedPosition(url: string, seconds: number | null) {
+  const positions = loadPreparedPositions()
+  if (seconds === null || seconds < 1) delete positions[url]
+  else positions[url] = seconds
+  try { localStorage.setItem(POSITIONS_KEY, JSON.stringify(positions)) } catch {}
+}
+
+/**
+ * One audio element plays every prepared chapter. iOS only lets an element
+ * play after a user gesture has started it once, and chapters start after
+ * awaits (manifest, caches) and on auto-advance, outside any gesture.
+ */
+const preparedAudio = typeof Audio !== 'undefined' ? new Audio() : null
+let preparedOwner = 0
+
+/** Call synchronously inside a click handler, before any await. */
+export function primePreparedAudio() {
+  if (!preparedAudio || !preparedAudio.paused) return
+  preparedAudio.src = '/silence.wav'
+  preparedAudio.play().catch(() => {})
+}
 
 export async function kokoroStreamPlay(
   text: string,
@@ -317,24 +343,48 @@ export async function kokoroStreamPlay(
 
   // Helper: stream a prepared chapter, resuming where it was last stopped
   function playPrepared(url: string) {
-    const audio = new Audio(url)
-    audio.playbackRate = rate
-    audio.currentTime = preparedPositions.get(url) ?? 0
+    const audio = preparedAudio!
+    const me = ++preparedOwner
+    const mine = () => preparedOwner === me
     let stopped = false
-    audio.addEventListener('playing', () => { onFirstAudio(); onProgress?.(1, 1) }, { once: true })
-    audio.addEventListener('ended', () => { preparedPositions.delete(url); if (!stopped) onDone() })
-    audio.addEventListener('error', () => { if (!stopped) onError(audio.error) })
-    audio.play().catch(err => { if (!stopped) onError(err) })
+    let lastSaved = 0
+    audio.pause()
+    audio.src = url
+    audio.addEventListener('loadedmetadata', () => {
+      // Seeking before metadata is ignored by iOS Safari
+      if (!mine()) return
+      const at = loadPreparedPositions()[url] ?? 0
+      if (at > 0 && at < audio.duration - 1) audio.currentTime = at
+    }, { once: true })
+    audio.addEventListener('playing', () => { if (mine()) { onFirstAudio(); onProgress?.(1, 1) } }, { once: true })
+    const onTime = () => {
+      if (!mine() || Math.abs(audio.currentTime - lastSaved) < 5) return
+      lastSaved = audio.currentTime
+      savePreparedPosition(url, audio.currentTime)
+    }
+    const onEnded = () => { if (!mine()) return; savePreparedPosition(url, null); if (!stopped) onDone() }
+    const onErr = () => { if (mine() && !stopped) onError(audio.error) }
+    audio.addEventListener('timeupdate', onTime)
+    audio.addEventListener('ended', onEnded)
+    audio.addEventListener('error', onErr)
+    audio.playbackRate = rate
+    audio.defaultPlaybackRate = rate
+    audio.play().catch(err => { if (mine() && !stopped) onError(err) })
     return {
       stop() {
         stopped = true
-        if (!audio.ended) preparedPositions.set(url, audio.currentTime)
+        audio.removeEventListener('timeupdate', onTime)
+        audio.removeEventListener('ended', onEnded)
+        audio.removeEventListener('error', onErr)
+        if (!mine()) return
+        // Before metadata currentTime is 0: keep the saved position
+        if (!audio.ended && audio.readyState > 0) savePreparedPosition(url, audio.currentTime)
         audio.pause()
         audio.removeAttribute('src')
         audio.load()
       },
-      mute() { audio.pause() },
-      unmute() { audio.play().catch(() => {}) },
+      mute() { if (mine()) audio.pause() },
+      unmute() { if (mine()) audio.play().catch(() => {}) },
     }
   }
 

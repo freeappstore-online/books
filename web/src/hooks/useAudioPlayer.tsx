@@ -4,6 +4,7 @@ import {
   getSavedKokoroVoice,
   saveKokoroVoice,
   isMobileDevice,
+  primePreparedAudio,
   getKokoroRuntimeInfo,
   subscribeKokoroRuntimeInfo,
   type KokoroRuntimeInfo,
@@ -71,16 +72,17 @@ interface AudioPlayerState {
 
 const AudioPlayerContext = createContext<AudioPlayerState | null>(null)
 
-// Chrome's network voices stop about 15 s into a long utterance, so browser
-// speech is fed paragraph- or sentence-sized pieces.
-const MAX_CHUNK = 600
+// Chrome's network voices stop about 15 s into an utterance, so browser speech
+// is fed sentence-sized pieces of about 10 s at the current rate.
+const CHUNK_CHARS_AT_1X = 160
 
 /** Split `text` from `from` into utterances, each with its start offset in `text`. */
-function chunkText(text: string, from = 0): { start: number; text: string }[] {
+function chunkText(text: string, from: number, rate: number): { start: number; text: string }[] {
+  const max = Math.round(CHUNK_CHARS_AT_1X * Math.min(Math.max(rate, 0.5), 3))
   const chunks: { start: number; text: string }[] = []
   let i = from
   while (i < text.length) {
-    let end = Math.min(text.length, i + MAX_CHUNK)
+    let end = Math.min(text.length, i + max)
     const newline = text.indexOf('\n', i)
     if (newline !== -1 && newline < end) {
       end = newline + 1
@@ -88,7 +90,8 @@ function chunkText(text: string, from = 0): { start: number; text: string }[] {
       const slice = text.slice(i, end)
       let cut = 0
       for (const m of slice.matchAll(/[.!?;:]["'”’)\]]*\s+/g)) cut = m.index + m[0].length
-      if (cut === 0) cut = slice.lastIndexOf(' ') + 1
+      if (cut === 0) cut = slice.lastIndexOf(', ') + 2
+      if (cut <= 1) cut = slice.lastIndexOf(' ') + 1
       if (cut > 0) end = i + cut
     }
     if (text.slice(i, end).trim()) chunks.push({ start: i, text: text.slice(i, end) })
@@ -130,6 +133,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   // Char offset in the current chapter reached by browser speech; resumes
   // from there after pause, speed or voice changes.
   const currentCharOffsetRef = useRef(0)
+  // Chrome can drop events of an utterance nothing references any more
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const mutedRef = useRef(false)
   bookRef.current = book
   chapterIdxRef.current = chapterIdx
   rateRef.current = rate
@@ -180,10 +186,12 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const halt = useCallback(() => {
     const gen = ++genRef.current
     speechSynthesis.cancel()
-    // A muted (paused) synthesizer keeps later utterances paused too
+    // A paused synthesizer keeps later utterances paused too
     speechSynthesis.resume()
+    utteranceRef.current = null
     kokoroPlayerRef.current?.stop()
     kokoroPlayerRef.current = null
+    mutedRef.current = false
     setMuted(false)
     setKokoroLoading(false)
     setWordHighlight(null)
@@ -228,7 +236,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     const gen = halt()
     enterChapter(b, idx, offset)
-    const chunks = chunkText(text, offset)
+    const chunks = chunkText(text, offset, rateRef.current)
     let next = 0
 
     function speakNext() {
@@ -244,7 +252,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       if (voice) utterance.voice = voice
 
       utterance.onstart = () => {
-        if (gen === genRef.current) currentCharOffsetRef.current = chunk.start
+        if (gen !== genRef.current) return
+        currentCharOffsetRef.current = chunk.start
+        savePosition(b!.slug, idx, chunk.start)
       }
       utterance.onboundary = (e) => {
         if (gen !== genRef.current || e.name !== 'word') return
@@ -260,6 +270,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setPlaying(false)
         setWordHighlight(null)
       }
+      utteranceRef.current = utterance
       speechSynthesis.speak(utterance)
     }
     speakNext()
@@ -272,6 +283,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     const gen = halt()
     enterChapter(b, idx, 0)
+    primePreparedAudio()
 
     // Kokoro's 160MB model crashes mobile tabs: there, only prepared chapters use the AI voice
     if (isMobileDevice() && !isPrepared(await loadPreparedManifest(), b.slug, idx, kokoroVoice)) {
@@ -297,7 +309,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         (err) => {
           if (gen !== genRef.current) return
           console.error('Kokoro TTS failed:', err)
-          setKokoroLoading(false)
+          halt()
           setPlaying(false)
         },
         // onProgress
@@ -317,6 +329,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         return
       }
       kokoroPlayerRef.current = player
+      // Muted while it was loading
+      if (mutedRef.current) player.mute()
     } catch (err) {
       if (gen !== genRef.current) return
       console.error('Kokoro TTS failed:', err)
@@ -350,17 +364,25 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     })
   }, [book, chapterIdx])
 
+  // Device speech can't be paused reliably (Android stops instead), so muting
+  // it halts and unmuting speaks again from the reached offset.
   const toggleMute = useCallback(() => {
-    if (muted) {
-      speechSynthesis.resume()
-      kokoroPlayerRef.current?.unmute()
-      setMuted(false)
+    if (!playing) return
+    if (mutedRef.current) {
+      if (engineRef.current === 'browser') {
+        speakBrowser(chapterIdxRef.current, currentCharOffsetRef.current)
+      } else {
+        kokoroPlayerRef.current?.unmute()
+        mutedRef.current = false
+        setMuted(false)
+      }
     } else {
-      speechSynthesis.pause()
-      kokoroPlayerRef.current?.mute()
+      if (engineRef.current === 'browser') halt()
+      else kokoroPlayerRef.current?.mute()
+      mutedRef.current = true
       setMuted(true)
     }
-  }, [muted])
+  }, [playing, halt, speakBrowser])
 
   const loadAndPlay = useCallback((newBook: AudioBook, startChapter?: number, charOffset?: number) => {
     const saved = loadPosition(newBook.slug)

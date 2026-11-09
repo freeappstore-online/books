@@ -153,15 +153,19 @@ export function ReaderPage() {
     if (selection && selection.toString().length > 0) return
 
     const container = e.currentTarget as HTMLElement
-    const range = document.caretRangeFromPoint(e.clientX, e.clientY)
-    if (!range) return
+    // caretPositionFromPoint is the standard (Firefox has only this one); WebKit has caretRangeFromPoint
+    const pos = document.caretPositionFromPoint?.(e.clientX, e.clientY)
+    const range = pos ? null : document.caretRangeFromPoint?.(e.clientX, e.clientY)
+    const caretNode = pos?.offsetNode ?? range?.startContainer
+    const caretOffset = pos?.offset ?? range?.startOffset ?? 0
+    if (!caretNode) return
 
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
     let offset = 0
     let node: Node | null
     while ((node = walker.nextNode())) {
-      if (node === range.startContainer) {
-        offset += range.startOffset
+      if (node === caretNode) {
+        offset += caretOffset
         break
       }
       offset += (node.textContent?.length ?? 0)
