@@ -300,6 +300,13 @@ test('a new build: toast while playing, playback carries on, Reload loads it', a
   const toast = page.getByRole('status').filter({ hasText: 'New version available' })
   await expect(toast).toContainText('Reloading stops playback', { timeout: 15_000 })
   await expect(page.getByRole('button', { name: 'Reload' })).toHaveCount(1)
+  // Above the player bar, however tall it is (its chapter list open: books#26)
+  await bar(page).getByRole('button', { name: 'Show chapters' }).click()
+  await expect.poll(async () => {
+    const [t, b] = [await toast.boundingBox(), await bar(page).boundingBox()]
+    return t && b ? b.y - (t.y + t.height) : -1
+  }, { message: 'toast clear of the player bar' }).toBeGreaterThanOrEqual(8)
+  await bar(page).getByRole('button', { name: 'Hide chapters' }).click()
   const t0 = (await audio(page))!.t
   await page.waitForTimeout(3000)
   const a = (await audio(page))!

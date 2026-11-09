@@ -15,7 +15,7 @@ const UPDATE_CHECK_MS = 60 * 60 * 1000
 export function UpdateToast() {
   const [ready, setReady] = useState(false)
   const [dismissed, setDismissed] = useState(false)
-  const { book, playing } = useAudioPlayer()
+  const { playing } = useAudioPlayer()
   const { jobs } = useOfflineBooks()
   const saving = Object.keys(jobs).length > 0
   const registration = useRef<ServiceWorkerRegistration>(undefined)
@@ -65,7 +65,9 @@ export function UpdateToast() {
     <div
       role="status"
       className="fixed left-1/2 -translate-x-1/2 z-[60] w-[min(26rem,calc(100vw-2rem))] flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm shadow-lg"
-      style={{ bottom: `calc(${book ? '7.5rem' : '1rem'} + env(safe-area-inset-bottom))` }}
+      // Above the player bar, whatever its height; the bar's height already includes the
+      // home-indicator inset, so that inset counts only without a bar
+      style={{ bottom: 'calc(max(var(--player-h, 0px), env(safe-area-inset-bottom)) + 1rem)' }}
     >
       <span className="flex-1 min-w-0">
         New version available
