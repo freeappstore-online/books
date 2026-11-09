@@ -5,9 +5,10 @@ Kokoro narration. Adding one takes two steps:
 
 1. **Text:** `scripts/catalog/fetch.py` writes `web/public/catalog/<slug>.json`, then you push to `main`
    and the app redeploys.
-2. **Narration:** the *Generate audio* workflow uploads `<voice>/<slug>/<chapter>.m4a` to the
+2. **Narration:** the *Generate audio* workflow uploads `<voice>/<slug>/<chapter>.m4a` and its
+   `<chapter>.timings.json` to the
    [`serge-ivo/books-audio`](https://huggingface.co/datasets/serge-ivo/books-audio) dataset on Hugging Face
-   and rebuilds its `manifest.json`. The app reads that manifest at runtime, so narration needs no
+   and updates its `manifest.json`. The app reads that manifest at runtime, so narration needs no
    redeploy.
 
 Do step 2 only after the text is final on `main`, because audio files are keyed by chapter *index*
@@ -112,20 +113,33 @@ hand. It runs from `main`, so push the text first.
 gh workflow run generate-audio.yml -R freeappstore-online/books \
   -f books="north-and-south villette"     # space-separated slugs; empty = every un-narrated chapter
   # -f voice=af_heart                      # Kokoro voice id; af_heart is the default
+  # -f force=true                          # narrate these books again even where audio exists
 gh run watch -R freeappstore-online/books  # or the Actions tab
 ```
 
 The workflow runs three jobs:
 
 1. **plan** (`scripts/audio/plan.py`) lists every chapter that has no
-   `<voice>/<slug>/<chapter>.m4a` in the dataset yet. It packs them into shards of up to 600k characters
+   `<voice>/<slug>/<chapter>.m4a` in the dataset yet (every chapter of `books` with `force`). It packs them into shards of up to 600k characters
    (about 4 h of CPU), keeping a book's chapters together.
-2. **generate** (`scripts/audio/generate.py`) runs one job per shard. It narrates each chapter with
-   Kokoro v1.0 (the model the app runs in the browser), encodes 40 kbps mono AAC, and uploads at least
-   every 30 minutes, so a job that dies keeps most of its work.
-3. **manifest** (`scripts/audio/manifest.py`) rebuilds `manifest.json` from everything in the dataset
-   and uploads it. The app's "AI" badge and prepared playback come from this file
-   (`web/src/hooks/preparedAudio.ts`).
+2. **generate** (`scripts/audio/generate.py`) runs one job per shard, at most 15 at once. It narrates
+   each chapter with Kokoro v1.0 (the model the app runs in the browser) one sentence at a time
+   (`scripts/audio/segments.py` splits them), joins them with short pauses, and encodes 40 kbps mono AAC.
+   Next to the audio it writes `<chapter>.timings.json`, `{"v":1,"segments":[[charStart,charEnd,startSec,endSec],...]}`,
+   one segment per sentence with UTF-16 offsets into the chapter's `content` (books#22); the reader
+   uses it to follow and highlight the narration. At most every 10 minutes it commits the new chapters
+   together with an updated `manifest.json`, so they appear in the app while the run goes on and a job
+   that dies keeps most of its work.
+3. **manifest** (`scripts/audio/manifest.py`) rebuilds the `books`' entries in `manifest.json` from
+   the dataset once all shards are done, in case one died before its last commit. Only the run's
+   `books` are touched (every book when `books` is empty), so audio of other books in the dataset
+   stays out of the app until a run is asked for them. The app's "AI" badge and
+   prepared playback come from this file (`web/src/hooks/preparedAudio.ts`).
+
+Audio narrated before timings existed (everything uploaded before books#22, except Alice) has no
+`timings.json`. Either narrate it again with `force`, or derive timings from the pauses in the audio
+with `scripts/audio/backfill_timings.py CATALOG_DIR REPO VOICE [SLUG...]` (needs `HF_TOKEN` and ffmpeg;
+approximate, see books#22).
 
 The upload uses the `HUGGINGFACE_TOKEN` repo secret (listed in `ops` `inventory.yaml`; it has write
 access to `serge-ivo/books-audio`). Never print it.
@@ -134,9 +148,9 @@ access to `serge-ivo/books-audio`). Never print it.
 
 - Kokoro narrates about **40 characters per second** on a GitHub runner. That is about 7 runner-hours
   per 1M characters, and 1M characters is about 18 h of audio.
-- The `freeappstore-online` org runs **20 jobs at once**, and the `generate` matrix takes all of them.
-  While it runs, the deploy and compliance runs of *every* repo in the org wait in the queue. On
-  2026-11-09 the full-catalogue run 42611075147 held this repo's deploys for more than 11 h.
+- The `freeappstore-online` org runs **20 jobs at once**. The `generate` matrix is capped at 15
+  (`max-parallel`), but a big run still slows the deploy and compliance runs of *every* repo in the
+  org. On 2026-11-09 the uncapped full-catalogue run 42611075147 held this repo's deploys for more than 11 h.
 - So dispatch batches of at most **~3M characters (≤5 shards)**, one *Generate audio* run at a time.
   Check before you start: `gh run list -R freeappstore-online/books -w "Generate audio" -s in_progress`.
   Two runs over the same books would narrate the same chapters twice, because each plan only sees what
@@ -167,11 +181,12 @@ file exists. So:
   text.
 - If it only changes the words inside a chapter, that chapter's audio is stale.
 
-In either case, delete the book's folder from the dataset and narrate it again:
+In either case, narrate the book again; if it now has fewer chapters, delete its folder from the
+dataset first:
 
 ```bash
-hf repos delete-files serge-ivo/books-audio "af_heart/<slug>/*" --repo-type dataset
-gh workflow run generate-audio.yml -R freeappstore-online/books -f books="<slug>"
+hf repos delete-files serge-ivo/books-audio "af_heart/<slug>/*" --repo-type dataset   # only if chapters were dropped
+gh workflow run generate-audio.yml -R freeappstore-online/books -f books="<slug>" -f force=true
 ```
 
 A book that is removed from the catalogue keeps its audio in the dataset, and `manifest.py` ignores it

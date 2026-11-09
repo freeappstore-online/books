@@ -1,8 +1,9 @@
 name: Generate audio
 
 # Pre-generates Kokoro narration for the public catalogue and uploads it to the
-# serge-ivo/books-audio dataset on Hugging Face (books#4). Run by hand; it skips
-# chapters already uploaded, so a re-run resumes.
+# serge-ivo/books-audio dataset on Hugging Face (books#4), with sentence timings
+# (books#22). Run by hand; it skips chapters already uploaded, so a re-run resumes.
+# Each shard commits the manifest with its chapters, so they appear as they finish (books#18).
 
 on:
   workflow_dispatch:
@@ -13,6 +14,10 @@ on:
       books:
         description: Space-separated slugs (empty = every book not yet narrated)
         default: ''
+      force:
+        description: Narrate these books again even where audio exists
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,6 +28,7 @@ env:
   HF_HUB_DISABLE_PROGRESS_BARS: '1'
   VOICE: ${{ inputs.voice }}
   BOOKS: ${{ inputs.books }}
+  FORCE: ${{ inputs.force && '--force' || '' }}
 
 jobs:
   plan:
@@ -37,7 +43,7 @@ jobs:
       - run: pip install -q -r scripts/audio/requirements.txt
       - run: hf repos create "$REPO" --repo-type dataset --public --exist-ok
       - id: plan
-        run: echo "matrix=$(python scripts/audio/plan.py web/public/catalog "$REPO" "$VOICE" $BOOKS)" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(python scripts/audio/plan.py web/public/catalog "$REPO" "$VOICE" $FORCE $BOOKS)" >> "$GITHUB_OUTPUT"
 
   generate:
     needs: plan
@@ -47,6 +53,8 @@ jobs:
     timeout-minutes: 355
     strategy:
       fail-fast: false
+      # The org has 20 Actions slots; leave some for app deploys
+      max-parallel: 15
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
@@ -79,5 +87,5 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -q -r scripts/audio/requirements.txt
-      - run: python scripts/audio/manifest.py web/public/catalog "$REPO" manifest.json
-      - run: hf upload "$REPO" manifest.json manifest.json --repo-type dataset --commit-message "manifest"
+      # Shards publish it as they go; this catches a shard that died before its last commit
+      - run: python scripts/audio/manifest.py web/public/catalog "$REPO" $BOOKS

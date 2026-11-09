@@ -10,3 +10,4 @@ screencheck-out/
 test-results/
 .playwright-mcp/
 *.tsbuildinfo
+__pycache__/
