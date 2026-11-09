@@ -67,9 +67,15 @@ export function AnnotationList({ slug, list, chapterTitles, onJump }: {
  * Below the selection, clear of the phone's own selection menu above it.
  */
 export function HighlightToolbar({ rect, onHighlight }: { rect: DOMRect; onHighlight: (color: HighlightColor, withNote: boolean) => void }) {
-  const width = 220
+  const width = 240
+  const height = 60
   const left = Math.min(Math.max(8, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 8)
-  const top = Math.min(rect.bottom + 8, window.innerHeight - 56)
+  // Below the selection, clear of the iOS/Android selection handle (touch) and of the iOS edit
+  // menu, which sits above it; above the selection instead when the fixed player is in the way
+  const gap = matchMedia('(pointer: coarse)').matches ? 32 : 8
+  const player = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--player-h')) || 0
+  const limit = window.innerHeight - player - height
+  const top = rect.bottom + gap <= limit ? rect.bottom + gap : Math.max(8, Math.min(limit, rect.top - gap - height))
   return (
     <div
       role="toolbar"
@@ -85,10 +91,10 @@ export function HighlightToolbar({ rect, onHighlight }: { rect: DOMRect; onHighl
           onClick={() => onHighlight(c, false)}
           aria-label={`Highlight ${HIGHLIGHT_COLORS[c].label.toLowerCase()}`}
           title={`Highlight ${HIGHLIGHT_COLORS[c].label.toLowerCase()}`}
-          className={`w-7 h-7 rounded-full border border-border ${HIGHLIGHT_COLORS[c].className}`}
+          className={`w-9 h-9 rounded-full border border-border ${HIGHLIGHT_COLORS[c].className}`}
         />
       ))}
-      <button onClick={() => onHighlight('yellow', true)} className="ml-auto text-sm font-semibold text-accent hover:text-accent-hover transition">
+      <button onClick={() => onHighlight('yellow', true)} className="ml-auto min-h-10 px-2 text-sm font-semibold text-accent hover:text-accent-hover transition">
         Note
       </button>
     </div>
