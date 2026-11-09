@@ -1,26 +1,31 @@
-"""Split the catalog books that still lack narration into balanced shards (books#4).
+"""Split the catalogue chapters that still lack narration into shards that fit a CI job (books#4).
 
-usage: plan.py CATALOG_DIR REPO VOICE SHARDS [SLUG...]
-Prints a GitHub Actions matrix: {"include": [{"shard": 0, "slugs": "a b c"}, ...]}.
-A book counts as done once REPO has VOICE/<slug>/index.json.
+usage: plan.py CATALOG_DIR REPO VOICE [SLUG...]
+Prints a GitHub Actions matrix: {"include": [{"shard": 0, "units": "slug:0 slug:1 ..."}, ...]}.
+A chapter counts as done once REPO has VOICE/<slug>/<chapter>.m4a. Shards keep a book's
+chapters together and hold at most SHARD_CHARS characters: Kokoro narrates ~40 chars per
+second of CPU on a GitHub runner, so 600k chars is ~4 h, inside the 6 h job limit.
 """
 import json, os, sys
 from huggingface_hub import HfApi
 
-catalog, repo, voice, shards, *only = sys.argv[1:]
-done = {p.split("/")[1] for p in HfApi().list_repo_files(repo, repo_type="dataset")
-        if p.startswith(voice + "/") and p.endswith("/index.json")}
-books = []
+SHARD_CHARS = 600_000
+
+catalog, repo, voice, *only = sys.argv[1:]
+done = set(HfApi().list_repo_files(repo, repo_type="dataset"))
+shards: list[list] = []
+size = SHARD_CHARS
 for name in sorted(os.listdir(catalog)):
     slug = name.removesuffix(".json")
-    if slug in done or (only and slug not in only):
+    if only and slug not in only:
         continue
-    chars = sum(len(c["content"]) for c in json.load(open(os.path.join(catalog, name)))["chapters"])
-    books.append((chars, slug))
-
-bins = [[0, []] for _ in range(min(int(shards), len(books)))]
-for chars, slug in sorted(books, reverse=True):
-    b = min(bins, key=lambda b: b[0])
-    b[0] += chars
-    b[1].append(slug)
-print(json.dumps({"include": [{"shard": i, "slugs": " ".join(b[1])} for i, b in enumerate(bins)]}))
+    for i, ch in enumerate(json.load(open(os.path.join(catalog, name)))["chapters"]):
+        chars = len(ch["content"].strip())
+        if not chars or f"{voice}/{slug}/{i}.m4a" in done:
+            continue
+        if size + chars > SHARD_CHARS:
+            shards.append([])
+            size = 0
+        shards[-1].append(f"{slug}:{i}")
+        size += chars
+print(json.dumps({"include": [{"shard": n, "units": " ".join(s)} for n, s in enumerate(shards)]}))
