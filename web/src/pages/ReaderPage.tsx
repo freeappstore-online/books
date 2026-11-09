@@ -82,16 +82,19 @@ export function ReaderPage() {
     }
   }, [slug, activeChapter, chapters.length, loading])
 
-  // Sync reader view with player chapter (next/prev/auto-advance)
+  // Follow the player when its chapter changes (next/prev/auto-advance). Not on
+  // activeChapter changes, so the reader can browse other chapters while it plays.
   useEffect(() => {
     if (!slug || chapters.length === 0) return
     if (player.book?.slug !== slug) return
     const target = chapters[player.chapterIdx]
-    if (target && target.id !== activeChapter) {
-      setActiveChapter(target.id)
+    if (!target) return
+    setActiveChapter(prev => {
+      if (prev === target.id) return prev
       window.scrollTo(0, 0)
-    }
-  }, [player.book?.slug, player.chapterIdx, slug, chapters, activeChapter])
+      return target.id
+    })
+  }, [player.book?.slug, player.chapterIdx, slug, chapters])
 
   async function loadBook(bookSlug: string) {
     await loadFromCatalog(bookSlug)
