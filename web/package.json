@@ -9,9 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@freeappstore/sdk": "^0.16.41",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@freeappstore/sdk": "^0.16.41"
+    "react-router-dom": "^7.12.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",

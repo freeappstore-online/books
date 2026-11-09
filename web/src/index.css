@@ -3,48 +3,142 @@
 
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* Theme is chosen by data-theme on <html> (light | dark | sepia), set before paint
+   in index.html and by hooks/useTheme.ts. Light is the :root default. */
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --paper: #fefdfb;
+    --panel: #f5f3f0;
+    --panel-alt: #ece9e4;
+    --popover: var(--paper);
+    --ink: #1a1917;
+    --ink-strong: #0d0c0b;
+    --muted: #8a8780;
+    --line: #e8e5e0;
+    --line-strong: #d4d0ca;
+    --accent: #c08552;
+    --accent-hover: #a86f40;
+    --accent-soft: #f6ece2;
+    --danger: #dc2626;
+    --danger-soft: #fef2f2;
+    --success: #16a34a;
+    --success-soft: #f0fdf4;
+    --warning: #ca8a04;
+    --warning-soft: #fefce8;
+    --radius-sm: 0.5rem;
+    --radius: 0.75rem;
+    --radius-lg: 1rem;
+    --shadow: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px -1px rgba(15,23,42,0.06);
+    --shadow-lg: 0 10px 25px -8px rgba(15,23,42,0.15), 0 4px 10px -4px rgba(15,23,42,0.08);
+
+    /* Sepia reader theme palette, applied by the [data-theme="sepia"] rule below. */
+    --sepia-paper: #f5ecd7;
+    --sepia-panel: #ede2c8;
+    --sepia-panel-alt: #e4d7b8;
+    --sepia-ink: #3b2f20;
+    --sepia-ink-strong: #241c12;
+    --sepia-muted: #7a6a52;
+    --sepia-line: #dccfb0;
+    --sepia-line-strong: #c9b994;
+    --sepia-accent: #a86b3c;
+    --sepia-accent-hover: #8f5a30;
+    --sepia-accent-soft: #eadbbd;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #141413;
+    --panel: #1e1d1b;
+    --panel-alt: #262523;
+    --ink: #f2f0ed;
+    --ink-strong: #ffffff;
+    --muted: #7a7770;
+    --line: #2a2825;
+    --line-strong: #3a3835;
+    --accent: #d4a574;
+    --accent-hover: #e0b98e;
+    --accent-soft: #2e2419;
+    --danger: #f87171;
+    --danger-soft: #450a0a;
+    --success: #4ade80;
+    --success-soft: #052e16;
+    --warning: #facc15;
+    --warning-soft: #422006;
+  }
+
+  :root[data-theme="sepia"] {
+    color-scheme: light;
+    --paper: var(--sepia-paper);
+    --panel: var(--sepia-panel);
+    --panel-alt: var(--sepia-panel-alt);
+    --ink: var(--sepia-ink);
+    --ink-strong: var(--sepia-ink-strong);
+    --muted: var(--sepia-muted);
+    --line: var(--sepia-line);
+    --line-strong: var(--sepia-line-strong);
+    --accent: var(--sepia-accent);
+    --accent-hover: var(--sepia-accent-hover);
+    --accent-soft: var(--sepia-accent-soft);
+  }
+}
 
 @theme {
-  --font-sans: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: "Fraunces", serif;
-  --color-warm-50: #fdf8f6;
-  --color-warm-100: #f2e8e5;
-  --color-warm-200: #eaddd7;
-  --color-warm-800: #2d2424;
-  --color-warm-900: #1a1412;
-  --color-warm-950: #0f0b0a;
+  --font-body: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Fraunces', ui-serif, Georgia, serif;
 }
 
-:root {
-  --paper: #fdf8f6;
-  --ink: #1a1412;
-  --accent: #e85d04;
+@theme inline {
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-panel-alt: var(--panel-alt);
+  --color-popover: var(--popover);
+  --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --font-code: var(--font-mono);
+  --radius-control: var(--radius-sm);
+  --radius-card: var(--radius);
+  --radius-dialog: var(--radius-lg);
+  --shadow-surface: var(--shadow);
+  --shadow-elevated: var(--shadow-lg);
+
+  /* Utility names used by the components ported from bepub, mapped onto the tokens above. */
+  --color-page: var(--paper);
+  --color-surface: var(--panel);
+  --color-surface-hover: var(--panel-alt);
+  --color-border: var(--line);
+  --color-text: var(--ink);
+  --color-text-muted: var(--muted);
+  --color-text-dim: color-mix(in srgb, var(--muted) 75%, var(--paper));
+  --color-btn-text: var(--paper);
 }
 
-html {
-  scroll-behavior: smooth;
-}
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
 
-body {
-  font-family: "Manrope", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
-
-.dark body {
-  background: #0f0b0a;
-  color: #f2e8e5;
-}
-
-body {
-  background: #fdf8f6;
-  color: #1a1412;
-}
-
-.display-font {
-  font-family: "Fraunces", serif;
-}
-
-/* Platform compliance: color-scheme declaration */
-:root { color-scheme: light dark; }

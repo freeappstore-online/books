@@ -1,21 +1,27 @@
 /**
  * Kokoro TTS engine — runs in a Web Worker to avoid freezing the UI.
- * ~160MB model downloaded on first use, then cached by the browser.
+ * ~160MB model downloaded on first use, then cached in Cache Storage.
  * Sentence-by-sentence streaming with gapless Web Audio API scheduling.
- *
- * Ported from bepublished (bepublished-online/platform web/src/hooks/useKokoro.ts).
- * Not ported: the IndexedDB chapter cache and Firebase crowd-sourced audio.
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
 
-const VOICE_KEY = 'freebooks-kokoro-voice'
-const READY_KEY = 'freebooks-kokoro-ready'
+const VOICE_KEY = 'bp-kokoro-voice'
+const READY_KEY = 'bp-kokoro-ready'
+const BACKEND_KEY = 'bp-kokoro-backend'
+const DTYPE_KEY = 'bp-kokoro-dtype'
 
 type ProgressCallback = (pct: number) => void
 let progressCallback: ProgressCallback | null = null
 export function onKokoroProgress(cb: ProgressCallback | null) { progressCallback = cb }
 
+export interface KokoroRuntimeInfo {
+  backend: 'webgpu' | 'wasm' | 'unknown'
+  dtype: string
+}
+
+type RuntimeListener = (info: KokoroRuntimeInfo) => void
+const runtimeListeners = new Set<RuntimeListener>()
 const readyListeners = new Set<() => void>()
 
 function emitReadyChange() {
@@ -29,6 +35,10 @@ function subscribeReady(listener: () => void) {
   }
 }
 
+function getReadySnapshot(): boolean {
+  return isKokoroDownloaded()
+}
+
 function setKokoroReadyFlag(ready: boolean) {
   try {
     if (ready) localStorage.setItem(READY_KEY, 'true')
@@ -36,6 +46,49 @@ function setKokoroReadyFlag(ready: boolean) {
   } catch {}
   emitReadyChange()
 }
+
+let runtimeInfo: KokoroRuntimeInfo = {
+  backend: readStoredBackend(),
+  dtype: readStoredDtype(),
+}
+
+function readStoredBackend(): KokoroRuntimeInfo['backend'] {
+  try {
+    const value = localStorage.getItem(BACKEND_KEY)
+    if (value === 'webgpu' || value === 'wasm') return value
+  } catch {}
+  return 'unknown'
+}
+
+function readStoredDtype(): string {
+  try { return localStorage.getItem(DTYPE_KEY) || 'unknown' } catch { return 'unknown' }
+}
+
+function emitRuntimeInfo() {
+  for (const listener of runtimeListeners) listener(runtimeInfo)
+}
+
+function setRuntimeInfo(next: KokoroRuntimeInfo) {
+  runtimeInfo = next
+  try {
+    localStorage.setItem(BACKEND_KEY, next.backend)
+    localStorage.setItem(DTYPE_KEY, next.dtype)
+  } catch {}
+  emitRuntimeInfo()
+}
+
+export function getKokoroRuntimeInfo(): KokoroRuntimeInfo {
+  return runtimeInfo
+}
+
+export function subscribeKokoroRuntimeInfo(listener: RuntimeListener) {
+  runtimeListeners.add(listener)
+  return () => {
+    runtimeListeners.delete(listener)
+  }
+}
+
+import { getCachedAudio, setCachedAudio, cacheKey, evictStaleCache } from './audioCache'
 
 function log(msg: string, ...args: unknown[]) {
   console.log(`[Kokoro] ${msg}`, ...args)
@@ -101,11 +154,23 @@ export function useKokoroReady() {
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
-  return useSyncExternalStore(subscribeReady, isKokoroDownloaded, isKokoroDownloaded)
+  return useSyncExternalStore(subscribeReady, getReadySnapshot, getReadySnapshot)
 }
 
 export function isMobileDevice(): boolean {
   return typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+}
+
+export async function verifyKokoroCache(): Promise<boolean> {
+  try {
+    const cacheNames = await caches.keys()
+    const hasCache = cacheNames.some(n => n.includes('transformers'))
+    if (!hasCache && isKokoroDownloaded()) {
+      setKokoroReadyFlag(false)
+      return false
+    }
+    return hasCache && isKokoroDownloaded()
+  } catch { return isKokoroDownloaded() }
 }
 
 // ── Worker management ──
@@ -117,7 +182,7 @@ let workerInitPromise: Promise<void> | null = null
 function getWorker(): Worker {
   if (worker) return worker
   log('Creating Web Worker...')
-  worker = new Worker('/kokoro-worker.js?v=3', { type: 'module' })
+  worker = new Worker('/kokoro-worker.js?v=2', { type: 'module' })
   return worker
 }
 
@@ -130,9 +195,12 @@ export function initWorker(): Promise<void> {
 
     function onMessage(e: MessageEvent) {
       if (e.data.type === 'ready') {
-        log('Worker: model ready (%s, %s)', e.data.device, e.data.dtype)
+        const backend = e.data.device === 'webgpu' || e.data.device === 'wasm' ? e.data.device : 'unknown'
+        const dtype = typeof e.data.dtype === 'string' ? e.data.dtype : 'unknown'
+        log('Worker: model ready (%s, %s)', backend, dtype)
         workerReady = true
         setKokoroReadyFlag(true)
+        setRuntimeInfo({ backend, dtype })
         w.removeEventListener('message', onMessage)
         resolve()
       } else if (e.data.type === 'progress') {
@@ -161,7 +229,7 @@ export async function preloadKokoro(): Promise<void> {
 }
 
 /** Generate one sentence in the worker. Returns audio data via transfer. */
-function generateInWorker(text: string, voice: string, speed: number): Promise<{ audio: Float32Array; sampleRate: number }> {
+export function generateInWorker(text: string, voice: string): Promise<{ audio: Float32Array; sampleRate: number }> {
   return new Promise((resolve, reject) => {
     const w = getWorker()
     const id = Math.random().toString(36).slice(2)
@@ -177,15 +245,14 @@ function generateInWorker(text: string, voice: string, speed: number): Promise<{
     }
 
     w.addEventListener('message', onMessage)
-    w.postMessage({ type: 'generate', id, text, voice, speed })
+    w.postMessage({ type: 'generate', id, text, voice })
   })
 }
 
 // ── Sentence splitting ──
 
 function splitSentences(text: string): string[] {
-  // `|$` keeps a trailing fragment that has no closing punctuation.
-  const raw = text.match(/[^.!?。！？]+(?:[.!?。！？]+|$)\s*/g) || [text]
+  const raw = text.match(/[^.!?。！？]+[.!?。！？]+[\s]*/g) || [text]
   const merged: string[] = []
   let buf = ''
   for (const s of raw) {
@@ -201,84 +268,166 @@ function splitSentences(text: string): string[] {
 
 // ── Streaming playback ──
 
-/**
- * Read `paragraphs` aloud from `startParagraph` to the end. Generation runs ahead of
- * playback in the worker; `onParagraph` fires as each paragraph starts sounding.
- */
 export async function kokoroStreamPlay(
-  paragraphs: string[],
-  startParagraph: number,
+  text: string,
   voiceId: string,
-  speed: number,
-  onParagraph: (idx: number) => void,
+  rate: number,
+  onFirstAudio: () => void,
   onDone: () => void,
   onError: (err: unknown) => void,
-): Promise<{ stop: () => void }> {
-  // Create the AudioContext before any await so it is tied to the Play click.
-  const ctx = new AudioContext()
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+  onProgress?: (generated: number, total: number) => void,
+  bookSlug?: string,
+  chapterIdx?: number,
+  version: string = 'original',
+): Promise<{ stop: () => void; mute: () => void; unmute: () => void }> {
+  log('streamPlay: voice=%s rate=%s text=%d chars', voiceId, rate, text.length)
+
+  // Evict old cache entries periodically
+  evictStaleCache().then(n => { if (n > 0) log('cache: evicted %d stale entries', n) }).catch(() => {})
+
+  // Check if the full chapter is already cached
+  const fullCacheKey = bookSlug && chapterIdx !== undefined
+    ? cacheKey(bookSlug, chapterIdx, voiceId, version) : null
+
+  // Helper: play a pre-generated audio buffer directly
+  function playBuffer(audio: Float32Array, sampleRate: number) {
+    const ctx = new AudioContext()
+    if (ctx.state === 'suspended') ctx.resume()
+    const buffer = ctx.createBuffer(1, audio.length, sampleRate)
+    buffer.copyToChannel(audio as unknown as Float32Array<ArrayBuffer>, 0)
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.playbackRate.value = rate
+    source.connect(ctx.destination)
+    onFirstAudio()
+    onProgress?.(1, 1)
+    source.start()
+    let stopped = false
+    source.onended = () => { if (!stopped) onDone() }
+    return {
+      stop() { stopped = true; try { source.stop() } catch {} ; ctx.close().catch(() => {}) },
+      mute() { ctx.suspend().catch(() => {}) },
+      unmute() { ctx.resume().catch(() => {}) },
+    }
+  }
+
+  if (fullCacheKey) {
+    // Check local IndexedDB cache
+    const cached = await getCachedAudio(fullCacheKey)
+    if (cached) {
+      log('streamPlay: LOCAL CACHE HIT')
+      return playBuffer(cached.audio, cached.sampleRate)
+    }
+
+    log('streamPlay: CACHE MISS — generating locally')
+  }
+
+  // Ensure worker is ready
+  await initWorker()
+
+  const sentences = splitSentences(text)
+  log('streamPlay: %d sentences', sentences.length)
+  if (sentences.length === 0) { onDone(); return { stop() {}, mute() {}, unmute() {} } }
 
   let stopped = false
+  const ctx = new AudioContext()
+
+  if (ctx.state === 'suspended') {
+    await ctx.resume()
+  }
+  log('streamPlay: AudioContext state=%s', ctx.state)
+
   const sources: AudioBufferSourceNode[] = []
-  const timers: number[] = []
-  const handle = {
+  const allAudioChunks: { audio: Float32Array; sampleRate: number }[] = []
+  let nextStartTime = 0
+  let firstPlayed = false
+  let finishedCount = 0
+  const totalSentences = sentences.length
+
+  async function generateAndSchedule(idx: number) {
+    if (stopped) return
+
+    try {
+      const t0 = performance.now()
+      log('generate[%d/%d]: "%s..."', idx + 1, totalSentences, sentences[idx].slice(0, 40))
+
+      // This runs in the worker — UI stays responsive
+      const { audio, sampleRate } = await generateInWorker(sentences[idx], voiceId)
+
+      const elapsed = Math.round(performance.now() - t0)
+      log('generate[%d/%d]: %dms, %d samples', idx + 1, totalSentences, elapsed, audio.length)
+
+      if (stopped) return
+
+      // Save chunk for full-chapter cache
+      allAudioChunks.push({ audio: new Float32Array(audio), sampleRate })
+
+      const buffer = ctx.createBuffer(1, audio.length, sampleRate)
+      buffer.copyToChannel(audio as unknown as Float32Array<ArrayBuffer>, 0)
+      const duration = buffer.duration / rate
+
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      source.playbackRate.value = rate
+      source.connect(ctx.destination)
+      sources.push(source)
+
+      if (!firstPlayed) {
+        firstPlayed = true
+        nextStartTime = ctx.currentTime
+        log('schedule[%d]: FIRST audio at %f', idx + 1, nextStartTime)
+        onFirstAudio()
+      }
+
+      source.start(nextStartTime)
+      nextStartTime += duration
+      onProgress?.(idx + 1, totalSentences)
+
+      source.onended = () => {
+        finishedCount++
+        if (finishedCount >= totalSentences && !stopped) {
+          log('streamPlay: ALL done')
+          // Cache locally
+          if (fullCacheKey && allAudioChunks.length === totalSentences) {
+            const totalLen = allAudioChunks.reduce((s, c) => s + c.audio.length, 0)
+            const merged = new Float32Array(totalLen)
+            let offset = 0
+            for (const chunk of allAudioChunks) {
+              merged.set(chunk.audio, offset)
+              offset += chunk.audio.length
+            }
+            const sr = allAudioChunks[0].sampleRate
+            log('cache: saving %s (%d samples, %.1f MB)', fullCacheKey, totalLen, totalLen * 4 / 1024 / 1024)
+            setCachedAudio(fullCacheKey, merged, sr).catch(() => {})
+          }
+          onDone()
+        }
+      }
+    } catch (err) {
+      log('generate[%d]: FAILED:', idx + 1, err)
+      if (!stopped) {
+        finishedCount++
+        onError(err)
+        if (finishedCount >= totalSentences) onDone()
+      }
+    }
+  }
+
+  // Sequential generation — each sentence scheduled at end of previous
+  ;(async () => {
+    for (let i = 0; i < sentences.length && !stopped; i++) {
+      await generateAndSchedule(i)
+    }
+  })().catch(err => { if (!stopped) onError(err) })
+
+  return {
     stop() {
       stopped = true
-      for (const t of timers) clearTimeout(t)
       for (const s of sources) { try { s.stop() } catch {} }
       sources.length = 0
       ctx.close().catch(() => {})
     },
+    mute() { ctx.suspend().catch(() => {}) },
+    unmute() { ctx.resume().catch(() => {}) },
   }
-
-  try {
-    await initWorker()
-  } catch (err) {
-    handle.stop()
-    throw err
-  }
-
-  const chunks = paragraphs.slice(startParagraph).flatMap((p, i) =>
-    splitSentences(p).map((text, j) => ({ text, paragraph: startParagraph + i, first: j === 0 })),
-  )
-  log('streamPlay: voice=%s speed=%s, %d chunks', voiceId, speed, chunks.length)
-  if (chunks.length === 0) { handle.stop(); onDone(); return handle }
-
-  let nextStartTime = 0
-
-  ;(async () => {
-    for (let idx = 0; idx < chunks.length && !stopped; idx++) {
-      const chunk = chunks[idx]
-      const t0 = performance.now()
-      const { audio, sampleRate } = await generateInWorker(chunk.text, voiceId, speed)
-      if (stopped) return
-      log('generate[%d/%d]: %dms, %d samples', idx + 1, chunks.length, Math.round(performance.now() - t0), audio.length)
-
-      const buffer = ctx.createBuffer(1, audio.length, sampleRate)
-      buffer.copyToChannel(audio as unknown as Float32Array<ArrayBuffer>, 0)
-      const source = ctx.createBufferSource()
-      source.buffer = buffer
-      source.connect(ctx.destination)
-      sources.push(source)
-
-      // If generation fell behind playback, start now instead of in the past.
-      const startAt = Math.max(nextStartTime, ctx.currentTime)
-      source.start(startAt)
-      nextStartTime = startAt + buffer.duration
-
-      if (chunk.first) {
-        timers.push(window.setTimeout(() => { if (!stopped) onParagraph(chunk.paragraph) },
-          (startAt - ctx.currentTime) * 1000))
-      }
-      if (idx === chunks.length - 1) {
-        source.onended = () => {
-          if (stopped) return
-          handle.stop()
-          onDone()
-        }
-      }
-    }
-  })().catch(err => { if (!stopped) { handle.stop(); onError(err) } })
-
-  return handle
 }

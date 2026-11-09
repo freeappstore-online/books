@@ -1,38 +1,28 @@
-import { useState, useEffect, useCallback } from 'react'
-import { CATALOG, type CatalogBook } from './data/catalog'
-import Library from './components/Library'
-import Reader from './components/Reader'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { CatalogPage } from './pages/CatalogPage'
+import { ReaderPage } from './pages/ReaderPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { LibraryPage } from './pages/LibraryPage'
+import { AudioPlayer } from './components/AudioPlayer'
+import { useBackgroundGeneration } from './hooks/useBackgroundGeneration'
 
-function getRouteFromHash(): { page: 'library' | 'reader'; bookId?: string } {
-  const hash = window.location.hash
-  const match = hash.match(/^#\/book\/(.+)$/)
-  if (match) return { page: 'reader', bookId: match[1] }
-  return { page: 'library' }
-}
+export function App() {
+  useBackgroundGeneration()
 
-export default function App() {
-  const [route, setRoute] = useState(getRouteFromHash)
+  return (
+    <>
+      <Routes>
+        <Route path="/" element={<CatalogPage />} />
+        <Route path="/read/:slug" element={<ReaderPage />} />
+        <Route path="/library" element={<LibraryPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
 
-  useEffect(() => {
-    const onHashChange = () => setRoute(getRouteFromHash())
-    window.addEventListener('hashchange', onHashChange)
-    return () => window.removeEventListener('hashchange', onHashChange)
-  }, [])
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
 
-  const navigateToBook = useCallback((book: CatalogBook) => {
-    window.location.hash = `#/book/${book.id}`
-  }, [])
-
-  const navigateToLibrary = useCallback(() => {
-    window.location.hash = ''
-  }, [])
-
-  if (route.page === 'reader' && route.bookId) {
-    const book = CATALOG.find(b => b.id === route.bookId)
-    if (book) {
-      return <Reader book={book} onBack={navigateToLibrary} />
-    }
-  }
-
-  return <Library onSelectBook={navigateToBook} />
+      {/* Global persistent audio player - lives outside routing */}
+      <AudioPlayer />
+    </>
+  )
 }

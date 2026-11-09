@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#1a1a2e" id="theme-color" />
+    <meta name="theme-color" content="#fefdfb" id="theme-color" />
     <meta name="darkreader-lock" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
@@ -14,11 +14,14 @@
     <title>FreeBooks - Free Audiobook Reader</title>
     <meta name="description" content="Free audiobook reader with browser-based text-to-speech. Listen to classic literature for free." />
     <script>
-      try {
-        var theme = localStorage.getItem('freebooks-theme') || 'dark';
-        if (theme === 'system') theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        if (theme === 'dark') document.documentElement.classList.add('dark');
-      } catch(e) {}
+      (function () {
+        try {
+          var t = localStorage.getItem('stores-theme');
+          if (t !== 'light' && t !== 'dark' && t !== 'sepia') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          document.documentElement.dataset.theme = t;
+          document.getElementById('theme-color').content = { light: '#fefdfb', dark: '#141413', sepia: '#f5ecd7' }[t];
+        } catch (e) {}
+      })();
     </script>
   </head>
   <body>

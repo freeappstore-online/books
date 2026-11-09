@@ -4,7 +4,7 @@
  *
  * Messages:
  *   main → worker: { type: 'init' }
- *   main → worker: { type: 'generate', id, text, voice, speed }
+ *   main → worker: { type: 'generate', id, text, voice }
  *   main → worker: { type: 'stop' }
  *   worker → main: { type: 'ready' }
  *   worker → main: { type: 'audio', id, audio: Float32Array, sampleRate: number }
@@ -67,13 +67,13 @@ self.onmessage = async (e) => {
   }
 
   if (type === 'generate') {
-    const { id, text, voice, speed } = e.data
+    const { id, text, voice } = e.data
     if (!tts) {
       self.postMessage({ type: 'error', id, error: 'Model not loaded' })
       return
     }
     try {
-      const result = await tts.generate(text, { voice, speed })
+      const result = await tts.generate(text, { voice })
       // Transfer the audio buffer (zero-copy)
       self.postMessage(
         { type: 'audio', id, audio: result.audio, sampleRate: result.sampling_rate },
