@@ -169,6 +169,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const ch = b.chapters[idx]
     const utterance = new SpeechSynthesisUtterance(ch.content)
     utterance.rate = rateRef.current
+    // Without a lang, a missing voice falls back to the system default, which may not be English
+    utterance.lang = getTtsCode()
     const voice = speechSynthesis.getVoices().find(v => v.name === voiceNameRef.current)
     if (voice) utterance.voice = voice
 
@@ -413,6 +415,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
     const utterance = new SpeechSynthesisUtterance(textFromOffset)
     utterance.rate = rateRef.current
+    // Without a lang, a missing voice falls back to the system default, which may not be English
+    utterance.lang = getTtsCode()
     const voice = speechSynthesis.getVoices().find(v => v.name === voiceNameRef.current)
     if (voice) utterance.voice = voice
 
