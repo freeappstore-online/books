@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAudioPlayer, RATES, type SleepChoice, type SleepTimer } from '../hooks/useAudioPlayer'
 import { loadSleepChoice } from '../hooks/audioStorage'
-import { getNarrationTime, useNarrationPosition } from '../hooks/narration'
+import { getNarrationTime, primeNarration, useNarrationPosition } from '../hooks/narration'
 import { chapterSeconds, isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
 import { useNavigate } from 'react-router-dom'
 import { CATALOG } from '../data/catalog'
@@ -48,6 +48,8 @@ export function AudioPlayer() {
   async function switchToBook(slug: string) {
     const catalogBook = CATALOG.find(b => b.id === slug)
     if (!catalogBook) return
+    // The book's text loads before it plays: unlock the audio while this is still the tap (iOS)
+    primeNarration()
 
     try {
       const res = await fetchSavedOr(catalogBook.contentPath)
