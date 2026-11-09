@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
+import { Fragment, memo, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { useReadAlong } from '../hooks/useAudioPlayer'
 import type { CharRange } from '../hooks/readAlong'
 
@@ -19,27 +19,45 @@ function splitBlocks(text: string): { start: number; end: number; text: string }
   return blocks
 }
 
+/** A range marked in the text besides the read-along: a search match or a reader's highlight. */
+export interface TextMark {
+  start: number
+  end: number
+  /** Classes of the <mark> */
+  className: string
+  /** data-mark attribute, to find the mark ("search", or a highlight's id) */
+  id: string
+}
+
+const NO_MARKS: TextMark[] = []
+
 /**
  * One paragraph. Highlight bounds are relative to the paragraph (empty when it
  * holds none), so a moving highlight re-renders only the paragraphs it enters or leaves.
+ * `marks` are relative to the paragraph too and keep their identity while they don't change.
  * A block of its own, so that change re-lays out one paragraph, not the whole chapter.
  */
-const Block = memo(function Block({ text, s0, s1, w0, w1 }: { text: string; s0: number; s1: number; w0: number; w1: number }) {
-  if (s0 >= s1 && w0 >= w1) return <span className="block">{text}</span>
-  const cuts = [...new Set([0, s0, s1, w0, w1, text.length])]
+const Block = memo(function Block({ text, s0, s1, w0, w1, marks }: {
+  text: string; s0: number; s1: number; w0: number; w1: number; marks: TextMark[]
+}) {
+  if (s0 >= s1 && w0 >= w1 && marks.length === 0) return <span className="block">{text}</span>
+  const cuts = [...new Set([0, s0, s1, w0, w1, text.length, ...marks.flatMap(m => [m.start, m.end])])]
     .filter(c => c >= 0 && c <= text.length)
     .sort((a, b) => a - b)
   const pieces = []
   for (let i = 0; i + 1 < cuts.length; i++) {
     const [a, b] = [cuts[i], cuts[i + 1]]
-    const piece = text.slice(a, b)
+    let piece: ReactNode = text.slice(a, b)
     if (a >= w0 && b <= w1) {
-      pieces.push(<mark key={a} data-readalong="word" className="bg-accent/35 text-inherit rounded-sm">{piece}</mark>)
+      piece = <mark data-readalong="word" className="bg-accent/35 text-inherit rounded-sm">{piece}</mark>
     } else if (a >= s0 && b <= s1) {
-      pieces.push(<span key={a} data-readalong="sentence" className="bg-accent/10 rounded-sm">{piece}</span>)
-    } else {
-      pieces.push(piece)
+      piece = <span data-readalong="sentence" className="bg-accent/10 rounded-sm">{piece}</span>
     }
+    // Marks wrap the read-along, so the spoken word still shows inside a highlight
+    for (const m of marks) {
+      if (a >= m.start && b <= m.end) piece = <mark data-mark={m.id} className={`text-inherit ${m.className}`}>{piece}</mark>
+    }
+    pieces.push(<Fragment key={a}>{piece}</Fragment>)
   }
   return <span className="block">{pieces}</span>
 })
@@ -47,6 +65,27 @@ const Block = memo(function Block({ text, s0, s1, w0, w1 }: { text: string; s0: 
 function clip(range: CharRange | null, start: number, end: number): [number, number] {
   if (!range || range[1] <= start || range[0] >= end) return [0, 0]
   return [Math.max(range[0], start) - start, Math.min(range[1], end) - start]
+}
+
+/** Chapter offset of a DOM position inside the ChapterText container. */
+export function textOffset(container: Node, node: Node, offset: number): number {
+  const r = document.createRange()
+  r.setStart(container, 0)
+  r.setEnd(node, offset)
+  return r.toString().length
+}
+
+/** The text node and offset at chapter offset `offset`. */
+function domPosition(container: Node, offset: number): { node: Node; offset: number } | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let total = 0
+  let n: Node | null
+  while ((n = walker.nextNode())) {
+    const len = n.textContent?.length ?? 0
+    if (total + len > offset) return { node: n, offset: offset - total }
+    total += len
+  }
+  return null
 }
 
 interface Props {
@@ -58,11 +97,22 @@ interface Props {
   style?: CSSProperties
   title?: string
   onClick?: (e: MouseEvent) => void
+  /** Search matches and highlights, in chapter offsets */
+  marks?: TextMark[]
+  /** Scroll to this chapter offset; each new object scrolls again */
+  focus?: { offset: number } | null
 }
 
 /** Chapter text that highlights the spoken word and sentence and keeps them in view. */
-export function ChapterText({ content, chapterIdx, active, className, style, title, onClick }: Props) {
+export function ChapterText({ content, chapterIdx, active, className, style, title, onClick, marks = NO_MARKS, focus }: Props) {
   const blocks = useMemo(() => splitBlocks(content), [content])
+  // Marks per paragraph, recomputed when the marks change, not as the read-along moves
+  const blockMarks = useMemo(() => blocks.map(({ start, end }) => {
+    const inside = marks.filter(m => m.start < end && m.end > start)
+    return inside.length === 0
+      ? NO_MARKS
+      : inside.map(m => ({ ...m, start: Math.max(m.start, start) - start, end: Math.min(m.end, end) - start }))
+  }), [blocks, marks])
   const pos = useReadAlong()
   const hl = active && pos?.chapterIdx === chapterIdx ? pos : null
   const containerRef = useRef<HTMLDivElement>(null)
@@ -89,6 +139,19 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
     }
   }, [])
 
+  // Jump to a search match, bookmark or highlight: show it in the upper third of the screen
+  useEffect(() => {
+    const container = containerRef.current
+    const at = focus && container ? domPosition(container, focus.offset) : null
+    if (!at) return
+    if (hasHighlightRef.current) setFollowing(false)
+    const r = document.createRange()
+    r.setStart(at.node, at.offset)
+    r.setEnd(at.node, Math.min(at.offset + 1, at.node.textContent?.length ?? 0))
+    const rect = r.getBoundingClientRect()
+    window.scrollTo({ top: window.scrollY + rect.top - window.innerHeight / 3, behavior: 'instant' })
+  }, [focus])
+
   // Keep the spoken line in view; scroll only once it leaves the comfortable area
   const target = hl?.word ?? hl?.sentence
   const targetStart = target?.[0] ?? -1
@@ -112,10 +175,10 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
         title={title}
         onClick={e => { setFollowing(true); onClick?.(e) }}
       >
-        {blocks.map(({ start, end, text }) => {
+        {blocks.map(({ start, end, text }, i) => {
           const [s0, s1] = clip(hl?.sentence ?? null, start, end)
           const [w0, w1] = clip(hl?.word ?? null, start, end)
-          return <Block key={start} text={text} s0={s0} s1={s1} w0={w0} w1={w1} />
+          return <Block key={start} text={text} s0={s0} s1={s1} w0={w0} w1={w1} marks={blockMarks[i]} />
         })}
       </div>
       {hl && !following && (

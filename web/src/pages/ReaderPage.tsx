@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { NavBar } from '../components/NavBar'
 import { PlayButton } from '../components/PlayButton'
 import { SaveOfflineButton } from '../components/SaveOfflineButton'
 import { fetchSavedOr } from '../hooks/offlineBooks'
-import { ChapterText } from '../components/ChapterText'
+import { ChapterText, textOffset, type TextMark } from '../components/ChapterText'
+import { BookSearch, SEARCH_INPUT_ID } from '../components/BookSearch'
+import type { SearchHit } from '../hooks/bookSearch'
 import { useReaderFontSize } from '../hooks/usePreferences'
 import { TextSizeControls } from '../components/TextSizeControls'
 import { saveProgress, getProgress } from '../hooks/useReadingProgress'
@@ -33,6 +35,10 @@ export function ReaderPage() {
   const [textPanelOpen, setTextPanelOpen] = useState(false)
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const themeStyle = THEME_STYLES[theme]
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchHit, setSearchHit] = useState<SearchHit | null>(null)
+  // Chapter offset to scroll to once the chapter shows (search, bookmarks)
+  const [focus, setFocus] = useState<{ offset: number } | null>(null)
 
   const player = useAudioPlayer()
   const articleRef = useRef<HTMLElement>(null)
@@ -144,22 +150,48 @@ export function ReaderPage() {
     const range = pos ? null : document.caretRangeFromPoint?.(e.clientX, e.clientY)
     const caretNode = pos?.offsetNode ?? range?.startContainer
     const caretOffset = pos?.offset ?? range?.startOffset ?? 0
-    if (!caretNode) return
-
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-    let offset = 0
-    let node: Node | null
-    while ((node = walker.nextNode())) {
-      if (node === caretNode) {
-        offset += caretOffset
-        break
-      }
-      offset += (node.textContent?.length ?? 0)
-    }
+    if (!caretNode || !container.contains(caretNode)) return
 
     // Listen from the clicked word (seeks there when this chapter is playing)
-    player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx, offset)
+    player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx, textOffset(container, caretNode, caretOffset))
   }, [slug, currentChapter, narrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx])
+
+  /** Show chapter `chapterIdx` scrolled to char `offset`. */
+  const jumpTo = useCallback((chapterIdx: number, offset: number) => {
+    const target = chapters[chapterIdx]
+    if (!target) return
+    setActiveChapter(target.id)
+    setSidebarOpen(false)
+    setFocus({ offset })
+  }, [chapters])
+
+  const onSearchJump = useCallback((hit: SearchHit) => {
+    setSearchHit(hit)
+    jumpTo(hit.chapterIdx, hit.start)
+  }, [jumpTo])
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false)
+    setSearchHit(null)
+  }, [])
+
+  // "/" opens the search, as on many sites
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return
+      e.preventDefault()
+      setSearchOpen(true)
+      document.getElementById(SEARCH_INPUT_ID)?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const marks = useMemo<TextMark[]>(() => searchHit && searchHit.chapterIdx === visibleChapterIdx
+    ? [{ start: searchHit.start, end: searchHit.end, id: 'search', className: 'bg-warning/40 outline-2 outline-warning rounded-sm' }]
+    : [], [searchHit, visibleChapterIdx])
 
   if (loading) {
     return <div className="min-h-dvh bg-page text-text flex items-center justify-center">Loading...</div>
@@ -183,6 +215,17 @@ export function ReaderPage() {
         subtitle={bookAuthor ? `${bookAuthor} · ${bookGenre}` : bookGenre}
         actions={<>
           <SaveOfflineButton slug={slug || ''} />
+          <button
+            onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+            aria-expanded={searchOpen}
+            aria-label="Search in this book"
+            title="Search in this book (/)"
+            className={`p-1.5 rounded-lg border border-border transition ${searchOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+            </svg>
+          </button>
           <div className="relative">
             <button
               onClick={() => setTextPanelOpen(o => !o)}
@@ -226,6 +269,8 @@ export function ReaderPage() {
           />
         </>}
       />
+
+      {searchOpen && <BookSearch chapters={chapters} onJump={onSearchJump} onClose={closeSearch} />}
 
       {notSavedOffline && (
         <div className="border-b border-border bg-warning/10 px-4 py-3 text-center text-sm text-warning">
@@ -290,6 +335,8 @@ export function ReaderPage() {
                 style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
                 onClick={handleTextClick}
                 title={narrated ? 'Click to start listening from here' : undefined}
+                marks={marks}
+                focus={focus}
               />
 
               <div className="flex justify-between mt-8 md:mt-12 pt-4 md:pt-6 border-t border-border">
