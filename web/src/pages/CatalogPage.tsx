@@ -67,14 +67,16 @@ export function CatalogPage() {
       <NavBar />
 
       <main>
+      {/* The page's h1 comes first for screen readers; the Continue shelf is shown above the hero */}
+      <h1 className="sr-only">Books: read or listen to classic books for free</h1>
       <ContinueShelf entries={entries} dim={dim} />
 
       <section className="px-4 md:px-6 py-10 md:py-16 max-w-6xl mx-auto">
         <div>
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-display leading-tight mb-3 md:mb-4">
+          <h2 className="text-3xl sm:text-5xl md:text-6xl font-display leading-tight mb-3 md:mb-4">
             Discover Books,<br />
             <span className="text-accent italic">Read or Listen</span>
-          </h1>
+          </h2>
           <p className="text-base md:text-xl text-text-muted max-w-2xl mb-6 md:mb-8">
             Read any book in the catalog for free. Books marked Audiobook can also be listened to, with the text following along.
           </p>
