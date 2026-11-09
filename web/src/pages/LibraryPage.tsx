@@ -73,16 +73,16 @@ function InProgress() {
                   {Math.round(progress.read * 100)}% read
                   {progress.listened !== null && ` · ${Math.round(progress.listened * 100)}% listened`}
                 </div>
-                <button onClick={() => setFinished(book.id, true)} className="mt-1 text-xs text-text-muted hover:text-text transition">
+                <button onClick={() => setFinished(book.id, true)} className="min-h-10 text-xs text-text-muted hover:text-text transition">
                   Mark as finished
                 </button>
               </div>
               <div className="shrink-0 flex flex-col items-end gap-2">
-                <Link to={`/read/${book.id}`} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-btn-text hover:bg-accent-hover transition">
+                <Link to={`/read/${book.id}`} className="min-h-10 inline-flex items-center rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-btn-text hover:bg-accent-hover transition">
                   Resume
                 </Link>
                 {manifest && isNarrated(manifest, book.id) && (
-                  <ListenButton book={book} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-muted hover:text-text transition" />
+                  <ListenButton book={book} className="min-h-10 inline-flex items-center rounded-lg border border-border px-4 py-1.5 text-xs font-semibold text-text-muted hover:text-text transition" />
                 )}
               </div>
             </div>
@@ -240,16 +240,16 @@ function SavedBooks() {
                   )}
                 </div>
                 {job ? (
-                  <button onClick={job.cancel} className="text-xs text-text-muted hover:text-danger transition shrink-0">Cancel</button>
+                  <button onClick={job.cancel} className="min-h-10 px-2 text-xs text-text-muted hover:text-danger transition shrink-0">Cancel</button>
                 ) : (
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0">
                     {reason && online && (
-                      <button onClick={() => saveBook(slug, book.voice)} className="text-xs text-accent hover:underline">
+                      <button onClick={() => saveBook(slug, book.voice)} className="min-h-10 px-2 text-xs text-accent hover:underline">
                         Update ({reason})
                       </button>
                     )}
                     {book && (
-                      <button onClick={() => removeSavedBook(slug)} className="text-xs text-text-muted hover:text-danger transition">Remove</button>
+                      <button onClick={() => removeSavedBook(slug)} className="min-h-10 px-2 text-xs text-text-muted hover:text-danger transition">Remove</button>
                     )}
                   </div>
                 )}

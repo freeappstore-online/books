@@ -95,7 +95,7 @@ export function CatalogPage() {
                 value={genre}
                 onChange={e => setGenre(e.target.value)}
                 aria-label="Genre"
-                className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-sm"
+                className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-base md:text-sm"
               >
                 <option value="">All Genres</option>
                 {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
@@ -104,7 +104,7 @@ export function CatalogPage() {
                 value={sort}
                 onChange={e => setSort(e.target.value as 'title' | 'author' | 'year')}
                 aria-label="Sort"
-                className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-sm"
+                className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-base md:text-sm"
               >
                 <option value="title">By Title</option>
                 <option value="author">By Author</option>
@@ -113,12 +113,13 @@ export function CatalogPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {/* Phones: one row that scrolls sideways, so 40 px chips don't push the books down */}
+          <div className="flex gap-2 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap md:overflow-visible">
             {tag && (
               <button
                 onClick={() => setTag('')}
                 aria-label={`Remove filter: ${tag}`}
-                className="text-xs px-3 py-1 rounded-full bg-accent text-btn-text font-semibold"
+                className="shrink-0 min-h-10 md:min-h-0 text-xs px-3 py-1 rounded-full bg-accent text-btn-text font-semibold"
               >
                 {tag} &times;
               </button>
@@ -127,7 +128,7 @@ export function CatalogPage() {
               <button
                 key={t}
                 onClick={() => setTag(t)}
-                className="text-xs px-3 py-1 rounded-full border border-border text-text-muted hover:border-accent hover:text-accent transition"
+                className="shrink-0 min-h-10 md:min-h-0 text-xs px-3 py-1 rounded-full border border-border text-text-muted hover:border-accent hover:text-accent transition"
               >
                 {t}
               </button>
@@ -189,7 +190,7 @@ export function CatalogPage() {
       </main>
 
       <footer className="pt-4 pb-8 text-center">
-        <a href="https://freeappstore.online" target="_blank" rel="noopener" className="text-[11px] font-medium text-text-dim hover:text-text transition-colors">
+        <a href="https://freeappstore.online" target="_blank" rel="noopener" className="inline-block py-3 text-[11px] font-medium text-text-dim hover:text-text transition-colors">
           Part of FreeAppStore — free forever
         </a>
       </footer>

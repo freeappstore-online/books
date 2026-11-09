@@ -11,7 +11,7 @@ export function ListeningSettings() {
         id="speed"
         value={player.rate}
         onChange={e => player.setRate(Number(e.target.value))}
-        className="bg-page text-text text-sm rounded-lg px-3 py-2 border border-border w-full max-w-xs"
+        className="bg-page text-text text-base md:text-sm rounded-lg px-3 py-2 border border-border w-full max-w-xs"
       >
         {RATES.map(r => <option key={r} value={r}>{r}x</option>)}
       </select>
