@@ -153,8 +153,10 @@ access to `serge-ivo/books-audio`). Never print it.
     | python3 -c 'import json,sys; m=json.load(sys.stdin)["af_heart"]; s=sys.argv[1]; print(s, "missing" if s not in m else f"{sum(d is None for d in m[s])} of {len(m[s])} chapters missing")' north-and-south
   ```
 
-- In the app, the book shows the AI badge, and "✦ AI" plays at once on a phone without downloading
-  the model.
+- In the app, a book with no narration is reading-only: no Play button and no AI pill. It becomes
+  listenable once the manifest has a chapter of it for any voice. So a newly added book stays
+  reading-only until its narration lands. Check that the book now shows the AI pill and that
+  chapters play at once on a phone.
 
 ## Changing a book after it is narrated
 
