@@ -1,6 +1,5 @@
 import { type Theme, setTheme } from '../hooks/useTheme'
 import { READER_FONTS, UI_SCALES, setReaderFontSize, setUiScaleValue, applyUiScale } from '../hooks/usePreferences'
-import { LANGUAGES, setLanguage as saveLanguage } from '../hooks/useLanguage'
 
 interface ReadingSettingsProps {
   currentTheme: Theme
@@ -9,11 +8,9 @@ interface ReadingSettingsProps {
   setReaderFont: (size: number) => void
   uiScale: number
   setUiScale: (scale: number) => void
-  language: string
-  setLanguage: (code: string) => void
 }
 
-export function ReadingSettings({ currentTheme, setCurrentTheme, readerFont, setReaderFont, uiScale, setUiScale, language, setLanguage }: ReadingSettingsProps) {
+export function ReadingSettings({ currentTheme, setCurrentTheme, readerFont, setReaderFont, uiScale, setUiScale }: ReadingSettingsProps) {
   function handleReaderFontChange(size: number) {
     setReaderFont(size)
     setReaderFontSize(size)
@@ -29,20 +26,6 @@ export function ReadingSettings({ currentTheme, setCurrentTheme, readerFont, set
     <div className="bg-surface rounded-xl border border-border p-5 md:p-6">
       <h2 className="text-lg font-semibold mb-4">Reading</h2>
       <div className="space-y-4">
-        <div>
-          <label className="block text-sm text-text-muted mb-3">Language</label>
-          <p className="text-xs text-text-dim mb-2">Sets the voice language for text-to-speech playback.</p>
-          <select
-            value={language}
-            onChange={e => { setLanguage(e.target.value); saveLanguage(e.target.value) }}
-            className="bg-page text-text text-sm rounded-lg px-3 py-2 border border-border w-full max-w-xs mb-4"
-          >
-            {LANGUAGES.map(l => (
-              <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>
-            ))}
-          </select>
-        </div>
-
         <div>
           <label className="block text-sm text-text-muted mb-3">Reading Theme</label>
           <div className="flex gap-2">

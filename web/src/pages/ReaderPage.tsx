@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { NavBar } from '../components/NavBar'
-import { LibraryButton } from '../components/LibraryButton'
-import { SmartPlayButtons } from '../components/SmartPlayButtons'
+import { PlayButton } from '../components/PlayButton'
 import { SaveOfflineButton } from '../components/SaveOfflineButton'
 import { fetchSavedOr } from '../hooks/offlineBooks'
 import { ChapterText } from '../components/ChapterText'
@@ -11,9 +10,7 @@ import { getReaderFontSize } from '../hooks/usePreferences'
 import { saveProgress, getProgress } from '../hooks/useReadingProgress'
 import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
 import { CATALOG } from '../data/catalog'
-import { getLibrary, LIBRARY_CHANGED_EVENT } from '../hooks/useLibrary'
-import { useKokoroReady } from '../hooks/useKokoro'
-import { isNarrated, preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
+import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
 
 interface ReaderChapter {
   id: string
@@ -31,7 +28,6 @@ export function ReaderPage() {
   const [loading, setLoading] = useState(true)
   const [notSavedOffline, setNotSavedOffline] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [libraryVersion, setLibraryVersion] = useState(0)
   const [fontSize] = useState(getReaderFontSize)
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const themeStyle = THEME_STYLES[theme]
@@ -45,15 +41,6 @@ export function ReaderPage() {
     if (!slug) return
     loadBook(slug)
   }, [slug])
-
-  useEffect(() => {
-    function handleLibraryChanged() {
-      setLibraryVersion(version => version + 1)
-    }
-
-    window.addEventListener(LIBRARY_CHANGED_EVENT, handleLibraryChanged)
-    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, handleLibraryChanged)
-  }, [])
 
   // Save reading progress: chapter, plus how far down it the reader has scrolled
   useEffect(() => {
@@ -140,18 +127,9 @@ export function ReaderPage() {
 
   const currentChapter = chapters.find(c => c.id === activeChapter)
   const visibleChapterIdx = chapters.findIndex(c => c.id === activeChapter)
-  const libraryEntry = useMemo(
-    () => slug ? getLibrary().find(entry => entry.slug === slug) : undefined,
-    [slug, libraryVersion],
-  )
-  const bookInLibrary = Boolean(libraryEntry)
   const manifest = usePreparedManifest()
   // Only narrated books can be listened to; false while the manifest loads (books#19)
   const narrated = Boolean(slug && manifest && isNarrated(manifest, slug))
-  const preparedChapters = narrated ? preparedCount(manifest!, slug!, player.kokoroVoice) : 0
-  const fullyPrepared = chapters.length > 0 && preparedChapters >= chapters.length
-  const readyCount = Math.max(preparedChapters, libraryEntry?.generatedChapters ?? 0)
-  const kokoroReady = useKokoroReady()
 
   const handleTextClick = useCallback((e: React.MouseEvent) => {
     if (!slug || !currentChapter || !narrated) return
@@ -177,13 +155,9 @@ export function ReaderPage() {
       offset += (node.textContent?.length ?? 0)
     }
 
-    // AI narration playing this chapter jumps to the clicked word when it has timings
-    if (player.engine === 'kokoro' && player.playing && playingChapterIdx === visibleChapterIdx
-      && player.seekToChar(visibleChapterIdx, offset)) return
-    // Otherwise listening from a clicked word needs the device voice: AI narration can't start mid-text
-    if (player.engine !== 'browser') player.setEngine('browser')
+    // Listen from the clicked word (seeks there when this chapter is playing)
     player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx, offset)
-  }, [slug, currentChapter, narrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx, playingChapterIdx])
+  }, [slug, currentChapter, narrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx])
 
   if (loading) {
     return <div className="min-h-dvh bg-page text-text flex items-center justify-center">Loading...</div>
@@ -206,7 +180,6 @@ export function ReaderPage() {
         title={bookTitle}
         subtitle={bookAuthor ? `${bookAuthor} · ${bookGenre}` : bookGenre}
         actions={<>
-          {narrated && <LibraryButton slug={slug || ''} title={bookTitle} totalChapters={chapters.length} />}
           <SaveOfflineButton slug={slug || ''} />
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -223,7 +196,7 @@ export function ReaderPage() {
             <option value="light">Light</option>
             <option value="sepia">Sepia</option>
           </select>
-          <SmartPlayButtons
+          <PlayButton
             slug={slug || ''}
             bookTitle={bookTitle}
             bookAuthor={bookAuthor}
@@ -232,49 +205,6 @@ export function ReaderPage() {
           />
         </>}
       />
-
-      {narrated && chapters.length > 0 && (
-        <section className="border-b border-border bg-surface/70">
-          <div className="max-w-5xl mx-auto px-4 md:px-6 py-3 flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-medium">
-                {fullyPrepared
-                  ? 'AI narration is ready for this book'
-                  : readyCount >= chapters.length
-                  ? 'AI voice is fully ready for this book'
-                  : readyCount > 0
-                    ? `${readyCount}/${chapters.length} chapters have AI voice on this device`
-                    : 'No AI chapters on this device yet'}
-              </div>
-              <p className="mt-1 text-xs text-text-dim max-w-2xl">
-                {fullyPrepared
-                  ? 'Press ✦ AI to listen on any device.'
-                  : readyCount >= chapters.length
-                  ? 'Chapters play instantly from this device, even offline.'
-                  : 'Add the book to your Library and this desktop generates the AI voice in the background.'}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {readyCount > 0 && (
-                <span className="rounded-full bg-success/15 px-2.5 py-1 font-semibold text-success">
-                  ✦ {readyCount}/{chapters.length} ready
-                </span>
-              )}
-              {bookInLibrary && readyCount < chapters.length && (
-                <span className="rounded-full border border-border px-2.5 py-1 text-text-muted">
-                  Queued in your desktop library
-                </span>
-              )}
-              {!kokoroReady && readyCount < chapters.length && (
-                <Link to="/settings" className="rounded-full border border-border px-2.5 py-1 text-accent hover:border-accent hover:text-text transition">
-                  Download AI model
-                </Link>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
 
       {notSavedOffline && (
         <div className="border-b border-border bg-warning/10 px-4 py-3 text-center text-sm text-warning">

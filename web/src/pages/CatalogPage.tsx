@@ -1,58 +1,31 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { CATALOG, GENRES, ALL_TAGS, type CatalogBook } from '../data/catalog'
 import { BookCover } from '../components/BookCover'
 import { NavBar } from '../components/NavBar'
 import { getAllProgress, getProgressPercent } from '../hooks/useReadingProgress'
-import { getLibrary, LIBRARY_CHANGED_EVENT, type LibraryBook } from '../hooks/useLibrary'
-import { getSavedKokoroVoice, isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
-import { isNarrated, preparedCount, usePreparedManifest, type PreparedManifest } from '../hooks/preparedAudio'
+import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
 import { useOfflineBooks, useOnline } from '../hooks/offlineBooks'
-
-interface AiBookState {
-  inLibrary: boolean
-  generatedCount: number
-  readyCount: number
-}
 
 export function CatalogPage() {
   const [search, setSearch] = useState('')
   const [genre, setGenre] = useState<string>('')
   const [tag, setTag] = useState<string>('')
   const [sort, setSort] = useState<'title' | 'author' | 'year'>('title')
-  const [library, setLibrary] = useState<LibraryBook[]>(() => getLibrary())
   const manifest = usePreparedManifest()
   const { saved } = useOfflineBooks()
   const online = useOnline()
   // Offline, only books saved on this device can be opened (books#7)
   const dim = (id: string) => (!online && !saved[id] ? 'opacity-40' : '')
 
-  useEffect(() => {
-    function handleLibraryChanged() {
-      setLibrary(getLibrary())
-    }
-
-    window.addEventListener(LIBRARY_CHANGED_EVENT, handleLibraryChanged)
-    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, handleLibraryChanged)
-  }, [])
-
-  const libraryBySlug = useMemo(() => {
-    const map = new Map<string, LibraryBook>()
-    for (const entry of library) {
-      if (!map.has(entry.slug)) map.set(entry.slug, entry)
-    }
-    return map
-  }, [library])
-
-  const catalogWithAi = useMemo(() => {
-    return CATALOG.map(book => ({
-      book,
-      ai: getAiBookState(libraryBySlug.get(book.id), manifest, book.id),
-    }))
-  }, [libraryBySlug, manifest])
+  // Books with narration can be listened to; none show as such while the manifest loads (books#19)
+  const entries = useMemo(
+    () => CATALOG.map(book => ({ book, narrated: Boolean(manifest && isNarrated(manifest, book.id)) })),
+    [manifest],
+  )
 
   const filtered = useMemo(() => {
-    let books = [...catalogWithAi]
+    let books = [...entries]
 
     if (search) {
       const q = search.toLowerCase()
@@ -72,130 +45,72 @@ export function CatalogPage() {
     })
 
     return books
-  }, [catalogWithAi, search, genre, tag, sort])
+  }, [entries, search, genre, tag, sort])
 
-  const featured = catalogWithAi.slice(0, 4)
-  const aiReadyNow = useMemo(
-    () => catalogWithAi
-      .filter(({ ai }) => ai.readyCount > 0)
-      .sort((a, b) => {
-        const aComplete = a.ai.readyCount >= a.book.chapters ? 1 : 0
-        const bComplete = b.ai.readyCount >= b.book.chapters ? 1 : 0
-        if (aComplete !== bComplete) return bComplete - aComplete
-        return b.ai.readyCount - a.ai.readyCount
-      })
-      .slice(0, 4),
-    [catalogWithAi],
-  )
-  const queuedOnDesktop = useMemo(
-    () => catalogWithAi
-      .filter(({ ai }) => ai.inLibrary)
-      .sort((a, b) => b.ai.generatedCount - a.ai.generatedCount)
-      .slice(0, 4),
-    [catalogWithAi],
-  )
-
-  const totalReadyBooks = catalogWithAi.filter(({ book, ai }) => ai.readyCount >= book.chapters).length
-  const totalReadyChapters = catalogWithAi.reduce((sum, { ai }) => sum + ai.readyCount, 0)
-  const isDesktop = !isMobileDevice()
-  const kokoroReady = useKokoroReady()
+  const featured = entries.slice(0, 4)
+  const audiobooks = entries.filter(e => e.narrated).slice(0, 4)
 
   return (
     <div className="min-h-dvh bg-page text-text">
       <NavBar />
 
       <section className="px-4 md:px-6 py-10 md:py-16 max-w-6xl mx-auto">
-        <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
-          <div>
-            <h1 className="text-3xl sm:text-5xl md:text-6xl font-display leading-tight mb-3 md:mb-4">
-              Discover Books,<br />
-              <span className="text-accent italic">Now With AI Voice</span>
-            </h1>
-            <p className="text-base md:text-xl text-text-muted max-w-2xl mb-6 md:mb-8">
-              Read any book in the catalog for free. Books marked ✦ AI can also be listened to, narrated by a natural AI voice.
-            </p>
+        <div>
+          <h1 className="text-3xl sm:text-5xl md:text-6xl font-display leading-tight mb-3 md:mb-4">
+            Discover Books,<br />
+            <span className="text-accent italic">Read or Listen</span>
+          </h1>
+          <p className="text-base md:text-xl text-text-muted max-w-2xl mb-6 md:mb-8">
+            Read any book in the catalog for free. Books marked Audiobook can also be listened to, with the text following along.
+          </p>
 
-            <div className="space-y-3 md:space-y-0 md:flex md:flex-wrap md:gap-3 mb-4">
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search books, authors, genres, topics..."
-                className="w-full md:flex-1 md:min-w-64 bg-surface border border-border rounded-lg px-4 py-3 text-text placeholder-text-dim focus:outline-none focus:border-accent transition"
-              />
-              <div className="flex gap-2">
-                <select
-                  value={genre}
-                  onChange={e => setGenre(e.target.value)}
-                  className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-sm"
-                >
-                  <option value="">All Genres</option>
-                  {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-                <select
-                  value={sort}
-                  onChange={e => setSort(e.target.value as 'title' | 'author' | 'year')}
-                  className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-sm"
-                >
-                  <option value="title">By Title</option>
-                  <option value="author">By Author</option>
-                  <option value="year">By Year</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {tag && (
-                <button
-                  onClick={() => setTag('')}
-                  className="text-xs px-3 py-1 rounded-full bg-accent text-btn-text font-semibold"
-                >
-                  {tag} &times;
-                </button>
-              )}
-              {ALL_TAGS.filter(t => t !== tag).slice(0, 12).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTag(t)}
-                  className="text-xs px-3 py-1 rounded-full border border-border text-text-muted hover:border-accent hover:text-accent transition"
-                >
-                  {t}
-                </button>
-              ))}
+          <div className="space-y-3 md:space-y-0 md:flex md:flex-wrap md:gap-3 mb-4">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search books, authors, genres, topics..."
+              className="w-full md:flex-1 md:min-w-64 bg-surface border border-border rounded-lg px-4 py-3 text-text placeholder-text-dim focus:outline-none focus:border-accent transition"
+            />
+            <div className="flex gap-2">
+              <select
+                value={genre}
+                onChange={e => setGenre(e.target.value)}
+                className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-sm"
+              >
+                <option value="">All Genres</option>
+                {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+              <select
+                value={sort}
+                onChange={e => setSort(e.target.value as 'title' | 'author' | 'year')}
+                className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-sm"
+              >
+                <option value="title">By Title</option>
+                <option value="author">By Author</option>
+                <option value="year">By Year</option>
+              </select>
             </div>
           </div>
 
-          <div className="bg-surface border border-border rounded-2xl p-5 md:p-6">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-dim mb-4">Desktop AI Voice</div>
-            <div className="grid grid-cols-2 gap-3 mb-5">
-              <StatCard label="Books AI-ready" value={String(totalReadyBooks)} />
-              <StatCard label="AI chapters" value={String(totalReadyChapters)} />
-              <StatCard label="Queued here" value={String(catalogWithAi.filter(({ ai }) => ai.inLibrary).length)} />
-              <StatCard label="Desktop status" value={isDesktop ? (kokoroReady ? 'Ready' : 'Model needed') : 'Mobile'} />
-            </div>
-
-            <div className="text-sm text-text-muted space-y-2">
-              {isDesktop && !kokoroReady && (
-                <p>Download the Kokoro model in Settings to generate AI voice locally.</p>
-              )}
-              {isDesktop && kokoroReady && (
-                <p>Your desktop can queue books in Library and generate chapters in the background, cached for offline playback.</p>
-              )}
-              {!isDesktop && (
-                <p>AI voice generation requires a desktop computer.</p>
-              )}
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Link to="/library" className="inline-flex items-center rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-btn-text transition hover:bg-accent-hover">
-                Open Library Queue
-              </Link>
-              {!kokoroReady && isDesktop && (
-                <Link to="/settings" className="inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm text-text-muted transition hover:border-accent hover:text-text">
-                  Get AI Model
-                </Link>
-              )}
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {tag && (
+              <button
+                onClick={() => setTag('')}
+                className="text-xs px-3 py-1 rounded-full bg-accent text-btn-text font-semibold"
+              >
+                {tag} &times;
+              </button>
+            )}
+            {ALL_TAGS.filter(t => t !== tag).slice(0, 12).map(t => (
+              <button
+                key={t}
+                onClick={() => setTag(t)}
+                className="text-xs px-3 py-1 rounded-full border border-border text-text-muted hover:border-accent hover:text-accent transition"
+              >
+                {t}
+              </button>
+            ))}
           </div>
         </div>
       </section>
@@ -213,7 +128,7 @@ export function CatalogPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
               {inProgress.map(book => {
                 const pct = getProgressPercent(book.id)
-                const ai = catalogWithAi.find(entry => entry.book.id === book.id)?.ai
+                const narrated = entries.find(entry => entry.book.id === book.id)?.narrated
                 return (
                   <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
                     <BookCover book={book} size="lg" />
@@ -224,7 +139,7 @@ export function CatalogPage() {
                         </div>
                         <p className="mt-1 text-xs text-text-dim">{pct}% complete</p>
                       </div>
-                      {ai && <AiStatusPills ai={ai} totalChapters={book.chapters} compact />}
+                      {narrated && <AudiobookPill />}
                     </div>
                   </Link>
                 )
@@ -234,41 +149,18 @@ export function CatalogPage() {
         )
       })()}
 
-      {!search && !genre && !tag && aiReadyNow.length > 0 && (
+      {!search && !genre && !tag && audiobooks.length > 0 && (
         <section className="px-4 md:px-6 pb-10 md:pb-12 max-w-6xl mx-auto">
-          <div className="flex items-end justify-between gap-3 mb-4 md:mb-6">
-            <div>
-              <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider">Ready To Listen In AI</h2>
-              <p className="mt-1 text-sm text-text-muted">These books already have AI audio cached on this device.</p>
-            </div>
-            <Link to="/library" className="hidden md:inline text-sm text-accent hover:underline">Open Library</Link>
-          </div>
+          <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">Audiobooks</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {aiReadyNow.map(({ book, ai }) => (
+            {audiobooks.map(({ book }) => (
               <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
                 <BookCover book={book} size="lg" />
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
-                  <AiStatusPills ai={ai} totalChapters={book.chapters} compact />
+                  <AudiobookPill />
                 </div>
               </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {!search && !genre && !tag && queuedOnDesktop.length > 0 && (
-        <section className="px-4 md:px-6 pb-10 md:pb-12 max-w-6xl mx-auto">
-          <div className="flex items-end justify-between gap-3 mb-4 md:mb-6">
-            <div>
-              <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider">Queued On This Desktop</h2>
-              <p className="mt-1 text-sm text-text-muted">Books your browser can keep generating in the background.</p>
-            </div>
-            <Link to="/library" className="hidden md:inline text-sm text-accent hover:underline">Manage Queue</Link>
-          </div>
-          <div className="grid gap-3 md:gap-4">
-            {queuedOnDesktop.map(({ book, ai }) => (
-              <BookListItem key={`queued-${book.id}`} book={book} ai={ai} saved={Boolean(saved[book.id])} online={online} />
             ))}
           </div>
         </section>
@@ -278,12 +170,12 @@ export function CatalogPage() {
         <section className="px-4 md:px-6 pb-10 md:pb-12 max-w-6xl mx-auto">
           <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">Featured</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {featured.map(({ book, ai }) => (
+            {featured.map(({ book, narrated }) => (
               <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
                 <BookCover book={book} size="lg" />
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
-                  <AiStatusPills ai={ai} totalChapters={book.chapters} compact />
+                  {narrated && <AudiobookPill />}
                 </div>
               </Link>
             ))}
@@ -296,8 +188,8 @@ export function CatalogPage() {
           {search || genre || tag ? `${filtered.length} results` : 'All Books'}
         </h2>
         <div className="grid gap-3 md:gap-4">
-          {filtered.map(({ book, ai }) => (
-            <BookListItem key={book.id} book={book} ai={ai} saved={Boolean(saved[book.id])} online={online} />
+          {filtered.map(({ book, narrated }) => (
+            <BookListItem key={book.id} book={book} narrated={narrated} saved={Boolean(saved[book.id])} online={online} />
           ))}
           {filtered.length === 0 && (
             <p className="text-text-muted py-12 text-center">No books match your search.</p>
@@ -314,7 +206,7 @@ export function CatalogPage() {
   )
 }
 
-function BookListItem({ book, ai, saved, online }: { book: CatalogBook; ai: AiBookState; saved: boolean; online: boolean }) {
+function BookListItem({ book, narrated, saved, online }: { book: CatalogBook; narrated: boolean; saved: boolean; online: boolean }) {
   const pct = getProgressPercent(book.id)
 
   return (
@@ -329,7 +221,7 @@ function BookListItem({ book, ai, saved, online }: { book: CatalogBook; ai: AiBo
             <h3 className="font-display text-base md:text-lg group-hover:text-accent transition">{book.title}</h3>
             <p className="text-xs md:text-sm text-text-muted mt-0.5">{book.author} &middot; {formatYear(book.year)} &middot; {book.genre}</p>
           </div>
-          <AiStatusPills ai={ai} totalChapters={book.chapters} />
+          {narrated && <AudiobookPill />}
         </div>
 
         <p className="text-xs md:text-sm text-text-dim mt-1.5 md:mt-2 line-clamp-2 hidden sm:block">{book.description}</p>
@@ -358,57 +250,12 @@ function BookListItem({ book, ai, saved, online }: { book: CatalogBook; ai: AiBo
   )
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function AudiobookPill() {
   return (
-    <div className="rounded-xl border border-border bg-page px-4 py-3">
-      <div className="text-lg font-semibold text-text">{value}</div>
-      <div className="mt-1 text-xs text-text-dim">{label}</div>
-    </div>
+    <span className="shrink-0 rounded-full bg-success/15 px-2 py-1 text-[11px] font-semibold text-success">
+      Audiobook
+    </span>
   )
-}
-
-function AiStatusPills({
-  ai,
-  totalChapters,
-  compact = false,
-}: {
-  ai: AiBookState
-  totalChapters: number
-  compact?: boolean
-}) {
-  const generatedCount = Math.max(ai.generatedCount, ai.readyCount)
-
-  return (
-    <div className={`flex ${compact ? 'flex-col items-end gap-1' : 'flex-wrap justify-end gap-1.5'} shrink-0`}>
-      {ai.readyCount >= totalChapters && totalChapters > 0 && (
-        <span className="rounded-full bg-success/15 px-2 py-1 text-[11px] font-semibold text-success">
-          ✦ AI ready
-        </span>
-      )}
-      {ai.readyCount > 0 && ai.readyCount < totalChapters && (
-        <span className="rounded-full bg-accent/15 px-2 py-1 text-[11px] font-semibold text-accent">
-          ✦ {ai.readyCount}/{totalChapters} ready
-        </span>
-      )}
-      {ai.inLibrary && ai.readyCount < totalChapters && (
-        <span className="rounded-full border border-border px-2 py-1 text-[11px] text-text-muted">
-          Queue {generatedCount}/{totalChapters}
-        </span>
-      )}
-    </div>
-  )
-}
-
-function getAiBookState(libraryEntry: LibraryBook | undefined, manifest: PreparedManifest | null, slug: string): AiBookState {
-  // Only narrated books can be listened to; none show as such while the manifest loads (books#19)
-  if (!manifest || !isNarrated(manifest, slug)) return { inLibrary: false, generatedCount: 0, readyCount: 0 }
-  const generatedCount = libraryEntry?.generatedChapters || 0
-
-  return {
-    inLibrary: Boolean(libraryEntry),
-    generatedCount,
-    readyCount: Math.max(generatedCount, preparedCount(manifest, slug, getSavedKokoroVoice())),
-  }
 }
 
 function formatYear(year: number): string {

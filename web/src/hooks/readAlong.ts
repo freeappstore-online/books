@@ -1,7 +1,7 @@
 /**
  * Read-along: where in the chapter text the audio is (books#20).
  *
- * Prepared AI narration ships sentence timings next to each chapter's audio;
+ * The prepared narration ships sentence timings next to each chapter's audio;
  * the spoken word inside a sentence is estimated by spreading the sentence's
  * time over its words by syllable count.
  */
@@ -22,9 +22,9 @@ export type TimingSegment = [number, number, number, number]
 
 const timingsCache = new Map<string, Promise<TimingSegment[] | null>>()
 
-/** Sentence timings of a prepared chapter; null when it has none. */
-export function loadTimings(slug: string, chapterIdx: number, voice: string): Promise<TimingSegment[] | null> {
-  const url = preparedTimingsUrl(slug, chapterIdx, voice)
+/** Sentence timings of a narrated chapter; null when it has none. */
+export function loadTimings(slug: string, chapterIdx: number): Promise<TimingSegment[] | null> {
+  const url = preparedTimingsUrl(slug, chapterIdx)
   let p = timingsCache.get(url)
   if (!p) {
     // Saved books keep their timings on the device (offline reading)
@@ -114,4 +114,9 @@ export function timeAtChar(text: string, segments: TimingSegment[], offset: numb
     before += w.weight
   }
   return seg[2] + (total > 0 ? before / total : 0) * (seg[3] - seg[2])
+}
+
+/** Seconds at which char `offset` is spoken: from the timings, else by its share of the chapter. */
+export function timeForChar(text: string, segments: TimingSegment[] | null, offset: number, duration: number): number {
+  return segments ? timeAtChar(text, segments, offset) : offset / Math.max(1, text.length) * duration
 }

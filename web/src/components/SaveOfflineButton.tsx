@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useAudioPlayer } from '../hooks/useAudioPlayer'
-import { preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
+import { preparedCount, usePreparedManifest, VOICE } from '../hooks/preparedAudio'
 import {
   estimateAudioBytes, formatBytes, saveBook, savedAudioChapters, useOfflineBooks, useOnline,
 } from '../hooks/offlineBooks'
@@ -10,7 +9,6 @@ import {
  * every narrated chapter; a book without narration saves its text only.
  */
 export function SaveOfflineButton({ slug }: { slug: string }) {
-  const { kokoroVoice } = useAudioPlayer()
   const { saved, jobs, errors } = useOfflineBooks()
   const manifest = usePreparedManifest()
   const online = useOnline()
@@ -31,7 +29,7 @@ export function SaveOfflineButton({ slug }: { slug: string }) {
 
   // Until the manifest loads it isn't known whether the book has narration
   if (!manifest) return null
-  const narrated = preparedCount(manifest, slug, kokoroVoice)
+  const narrated = preparedCount(manifest, slug)
 
   if (book) {
     const newChapters = book.voice ? narrated - savedAudioChapters(book) : 0
@@ -50,7 +48,7 @@ export function SaveOfflineButton({ slug }: { slug: string }) {
       <Link
         to="/library"
         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-success/15 text-success transition"
-        title="Saved on this device: manage it in Library"
+        title="Saved on this device: manage it in My books"
       >
         ✓ Saved offline
       </Link>
@@ -58,13 +56,13 @@ export function SaveOfflineButton({ slug }: { slug: string }) {
   }
 
   if (!online) return null
-  const estimate = estimateAudioBytes(manifest, slug, kokoroVoice)
+  const estimate = estimateAudioBytes(manifest, slug, VOICE)
   return (
     <button
-      onClick={() => saveBook(slug, kokoroVoice)}
+      onClick={() => saveBook(slug, VOICE)}
       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-hover text-text-muted hover:text-accent transition"
       title={errors[slug] ? `Last attempt failed: ${errors[slug]}` : narrated > 0
-        ? 'Download the text and AI narration to read and listen offline'
+        ? 'Download the text and narration to read and listen offline'
         : 'Download the text to read offline'}
     >
       {errors[slug] ? '↻ Retry save' : narrated > 0 ? `↓ Save offline · ~${formatBytes(estimate)}` : '↓ Save to read offline'}

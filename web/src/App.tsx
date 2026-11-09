@@ -4,11 +4,8 @@ import { ReaderPage } from './pages/ReaderPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LibraryPage } from './pages/LibraryPage'
 import { AudioPlayer } from './components/AudioPlayer'
-import { useBackgroundGeneration } from './hooks/useBackgroundGeneration'
 
 export function App() {
-  useBackgroundGeneration()
-
   return (
     <>
       <Routes>

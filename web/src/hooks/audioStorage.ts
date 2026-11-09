@@ -3,14 +3,10 @@
  * Each function has its own try/catch so callers never crash on storage errors.
  */
 
-import type { TtsEngine } from './useAudioPlayer'
-
 // ── Keys ──
 const HISTORY_KEY = 'bp-audio-history'
 const POSITION_KEY = 'bp-audio-position'
 const RATE_KEY = 'bp-audio-rate'
-const VOICE_KEY = 'bp-audio-voice'
-const ENGINE_KEY = 'bp-audio-engine'
 const SLEEP_KEY = 'bp-audio-sleep'
 
 // ── Rate ──
@@ -19,22 +15,6 @@ export function loadRate(): number {
 }
 export function saveRate(r: number) {
   try { localStorage.setItem(RATE_KEY, String(r)) } catch {}
-}
-
-// ── Voice (browser TTS) ──
-export function loadVoice(): string {
-  try { return localStorage.getItem(VOICE_KEY) || '' } catch { return '' }
-}
-export function saveVoice(v: string) {
-  try { localStorage.setItem(VOICE_KEY, v) } catch {}
-}
-
-// ── Engine ──
-export function loadEngine(): TtsEngine {
-  try { return (localStorage.getItem(ENGINE_KEY) as TtsEngine) || 'browser' } catch { return 'browser' }
-}
-export function saveEngine(e: TtsEngine) {
-  try { localStorage.setItem(ENGINE_KEY, e) } catch {}
 }
 
 // ── Sleep timer: last choice, minutes or end of chapter ──
@@ -65,30 +45,24 @@ export function saveHistory(h: HistoryEntry[]) {
   try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, 50))) } catch {}
 }
 
-// ── Position (chapter + character offset per book) ──
-export interface SavedPosition {
-  chapterIdx: number
-  charOffset: number
+// ── Position: the chapter each book was listened to last ──
+// (where in the chapter is kept by narration.ts)
+export function loadPosition(slug: string): number {
+  try {
+    const val = JSON.parse(localStorage.getItem(POSITION_KEY) || '{}')[slug]
+    // Older versions stored { chapterIdx, charOffset }
+    return (typeof val === 'number' ? val : val?.chapterIdx) || 0
+  } catch { return 0 }
 }
 
-export function loadPosition(slug: string): SavedPosition {
+export function savePosition(slug: string, chapterIdx: number) {
   try {
     const positions = JSON.parse(localStorage.getItem(POSITION_KEY) || '{}')
-    const val = positions[slug]
-    if (typeof val === 'number') return { chapterIdx: val, charOffset: 0 } // legacy
-    if (val && typeof val === 'object') return val as SavedPosition
-    return { chapterIdx: 0, charOffset: 0 }
-  } catch { return { chapterIdx: 0, charOffset: 0 } }
-}
-
-export function savePosition(slug: string, chapterIdx: number, charOffset: number) {
-  try {
-    const positions = JSON.parse(localStorage.getItem(POSITION_KEY) || '{}')
-    positions[slug] = { chapterIdx, charOffset }
+    positions[slug] = chapterIdx
     localStorage.setItem(POSITION_KEY, JSON.stringify(positions))
   } catch {}
 
-  // Also update history entry so Library tab shows current chapter
+  // Also update the history entry so My books shows the current chapter
   try {
     const history: HistoryEntry[] = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
     const entry = history.find(h => h.slug === slug)
