@@ -167,12 +167,9 @@ export function ReaderPage() {
       offset += (node.textContent?.length ?? 0)
     }
 
-    if (!player.book || player.book.slug !== slug) {
-      player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx)
-      setTimeout(() => player.speakFromOffset(visibleChapterIdx, offset), 50)
-    } else {
-      player.speakFromOffset(visibleChapterIdx, offset)
-    }
+    // Listening from a clicked word needs the device voice: AI narration can't start mid-text
+    if (player.engine !== 'browser') player.setEngine('browser')
+    player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx, offset)
   }, [slug, currentChapter, player, bookTitle, bookAuthor, chapters, visibleChapterIdx])
 
   const highlightedContent = useMemo(() => {
