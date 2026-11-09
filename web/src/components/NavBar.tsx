@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
+import { useOnline } from '../hooks/offlineBooks'
 
 interface Props {
   /** Optional title shown next to back button (e.g. book title) */
@@ -13,6 +14,7 @@ export function NavBar({ title, subtitle, actions }: Props) {
   const location = useLocation()
 
   const isHome = location.pathname === '/'
+  const online = useOnline()
 
   return (
     <header className="border-b border-border px-4 md:px-6 py-2.5 md:py-3">
@@ -60,6 +62,11 @@ export function NavBar({ title, subtitle, actions }: Props) {
 
         {/* Right: actions + mobile nav */}
         <div className="flex items-center gap-2 md:gap-3 shrink-0">
+          {!online && (
+            <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-warning/15 text-warning" title="No connection: saved books still open">
+              Offline
+            </span>
+          )}
           {actions}
 
           {/* Mobile nav icons */}

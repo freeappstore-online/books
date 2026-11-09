@@ -13,7 +13,10 @@ import {
 import { hasCachedAudio, cacheKey } from '../hooks/audioCache'
 import { isMobileDevice, KOKORO_VOICES, useKokoroReady } from '../hooks/useKokoro'
 import { CATALOG } from '../data/catalog'
-import { isNarrated, loadPreparedManifest } from '../hooks/preparedAudio'
+import { isNarrated, loadPreparedManifest, preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
+import {
+  fetchSavedOr, formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, useOfflineBooks, useOnline,
+} from '../hooks/offlineBooks'
 
 interface ChapterStatus {
   title: string
@@ -42,7 +45,7 @@ export function LibraryPage() {
     for (const book of lib) {
       let chapterTitles: string[] = []
       try {
-        const res = await fetch(`/catalog/${book.slug}.json`)
+        const res = await fetchSavedOr(`/catalog/${book.slug}.json`)
         if (res.ok) {
           const data = await res.json() as { chapters: { title: string }[] }
           chapterTitles = data.chapters.map(c => c.title)
@@ -104,6 +107,8 @@ export function LibraryPage() {
       <NavBar title="Library" />
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">
+        <SavedBooks />
+
         {/* Explainer */}
         <div className="bg-surface rounded-xl border border-border p-5 md:p-6 mb-6">
           <h2 className="text-lg font-display mb-3">AI Voice Library</h2>
@@ -281,5 +286,83 @@ export function LibraryPage() {
         )}
       </div>
     </div>
+  )
+}
+
+/** Books saved on this device for offline reading and listening (books#7). */
+function SavedBooks() {
+  const { saved, jobs } = useOfflineBooks()
+  const manifest = usePreparedManifest()
+  const online = useOnline()
+  const [storage, setStorage] = useState<{ usage: number; quota: number; persisted: boolean } | null>(null)
+  const slugs = [...new Set([...Object.keys(saved), ...Object.keys(jobs)])]
+
+  useEffect(() => {
+    const storageApi = navigator.storage
+    if (!storageApi?.estimate) return
+    Promise.all([storageApi.estimate(), storageApi.persisted?.() ?? false])
+      .then(([estimate, persisted]) => setStorage({ usage: estimate.usage ?? 0, quota: estimate.quota ?? 0, persisted }))
+      .catch(() => {})
+  }, [saved])
+
+  return (
+    <section className="bg-surface rounded-xl border border-border p-5 md:p-6 mb-6">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <h2 className="text-lg font-display">Saved on this device</h2>
+        {storage && (
+          <div className="text-xs text-text-dim text-right">
+            {formatBytes(storage.usage)} used{storage.quota > 0 && ` of ${formatBytes(storage.quota)}`}
+            <div>{storage.persisted ? 'Kept until you remove it' : 'The browser may clear it if space runs low'}</div>
+          </div>
+        )}
+      </div>
+      {slugs.length === 0 ? (
+        <p className="text-sm text-text-muted">
+          Open a book and tap "Save offline" to read and listen without a connection.
+        </p>
+      ) : (
+        <div className="divide-y divide-border">
+          {slugs.map(slug => {
+            const book = saved[slug]
+            const job = jobs[slug]
+            const catalogBook = CATALOG.find(b => b.id === slug)
+            const chapters = catalogBook?.chapters ?? 0
+            const audio = book ? savedAudioChapters(book) : 0
+            const newChapters = book?.voice && manifest ? preparedCount(manifest, slug, book.voice) - audio : 0
+            return (
+              <div key={slug} className="py-3 flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <Link to={`/read/${slug}`} className="text-sm font-medium hover:text-accent transition">
+                    {catalogBook?.title ?? slug}
+                  </Link>
+                  <div className="text-xs text-text-dim mt-0.5">
+                    {job
+                      ? `Saving… ${Math.round(job.progress * 100)}%`
+                      : book && `${formatBytes(savedBytes(book))} · ${book.voice ? `${audio}/${chapters} chapters with audio` : 'Text only'}`}
+                  </div>
+                  {job && (
+                    <div className="mt-1.5 h-1.5 bg-surface-hover rounded-full overflow-hidden">
+                      <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${Math.round(job.progress * 100)}%` }} />
+                    </div>
+                  )}
+                </div>
+                {job ? (
+                  <button onClick={job.cancel} className="text-xs text-text-muted hover:text-danger transition shrink-0">Cancel</button>
+                ) : (
+                  <div className="flex items-center gap-3 shrink-0">
+                    {newChapters > 0 && online && (
+                      <button onClick={() => saveBook(slug, book.voice!)} className="text-xs text-accent hover:underline">
+                        Update ({newChapters} new)
+                      </button>
+                    )}
+                    <button onClick={() => removeSavedBook(slug)} className="text-xs text-text-muted hover:text-danger transition">Remove</button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }

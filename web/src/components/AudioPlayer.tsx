@@ -4,6 +4,7 @@ import { KOKORO_VOICES, KOKORO_LANGUAGES, isMobileDevice, useKokoroReady, usePre
 import { isNarrated, preparedCount, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
 import { useNavigate } from 'react-router-dom'
 import { CATALOG } from '../data/catalog'
+import { fetchSavedOr } from '../hooks/offlineBooks'
 
 export function AudioPlayer() {
   const {
@@ -52,7 +53,7 @@ export function AudioPlayer() {
     if (!catalogBook) return
 
     try {
-      const res = await fetch(catalogBook.contentPath)
+      const res = await fetchSavedOr(catalogBook.contentPath)
       if (!res.ok) return
       const data = await res.json() as { chapters: { title: string; content: string }[] }
       const chapters = data.chapters.map((ch, i) => ({

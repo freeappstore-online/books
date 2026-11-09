@@ -6,6 +6,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react'
 import { isPrepared, loadPreparedManifest, preparedUrl } from './preparedAudio'
+import { savedResponse } from './offlineBooks'
 
 const VOICE_KEY = 'bp-kokoro-voice'
 const READY_KEY = 'bp-kokoro-ready'
@@ -360,6 +361,15 @@ export function seekPrepared(url: string, seconds: number, duration: number) {
   setPreparedPosition({ url, active: false, time: at, duration })
 }
 
+/** Object URL of the saved chapter the element is playing, revoked when replaced */
+let preparedObjectUrl: string | null = null
+function setPreparedSrc(audio: HTMLAudioElement, src: string | null) {
+  if (preparedObjectUrl) URL.revokeObjectURL(preparedObjectUrl)
+  preparedObjectUrl = src?.startsWith('blob:') ? src : null
+  if (src) audio.src = src
+  else audio.removeAttribute('src')
+}
+
 /** Call synchronously inside a click handler, before any await. */
 export function primePreparedAudio() {
   if (!preparedAudio || !preparedAudio.paused) return
@@ -419,8 +429,8 @@ export async function kokoroStreamPlay(
     }
   }
 
-  // Helper: stream a prepared chapter, resuming where it was last stopped
-  function playPrepared(url: string): KokoroPlayback {
+  // Helper: stream a prepared chapter (or play its saved copy), resuming where it was last stopped
+  function playPrepared(url: string, src: string): KokoroPlayback {
     const audio = preparedAudio!
     const me = ++preparedOwner
     const mine = () => preparedOwner === me
@@ -429,7 +439,7 @@ export async function kokoroStreamPlay(
     audio.pause()
     preparedPlaying = url
     setPreparedPosition({ url, active: true, time: loadPreparedPositions()[url] ?? 0, duration: 0 })
-    audio.src = url
+    setPreparedSrc(audio, src)
     audio.addEventListener('loadedmetadata', () => {
       // Seeking before metadata is ignored by iOS Safari
       if (!mine()) return
@@ -462,7 +472,7 @@ export async function kokoroStreamPlay(
         preparedPlaying = null
         setPreparedPosition({ ...preparedPosition, active: false, time: getPreparedTime(url) })
         audio.pause()
-        audio.removeAttribute('src')
+        setPreparedSrc(audio, null)
         audio.load()
       },
       mute() { if (mine()) audio.pause() },
@@ -484,8 +494,11 @@ export async function kokoroStreamPlay(
     }
 
     if (isPrepared(await loadPreparedManifest(), bookSlug!, chapterIdx!, voiceId)) {
-      log('streamPlay: PREPARED — streaming')
-      return playPrepared(preparedUrl(bookSlug!, chapterIdx!, voiceId))
+      const url = preparedUrl(bookSlug!, chapterIdx!, voiceId)
+      // A book saved for offline plays from this device (books#7)
+      const saved = await savedResponse(url)
+      log('streamPlay: PREPARED — %s', saved ? 'saved copy' : 'streaming')
+      return playPrepared(url, saved ? URL.createObjectURL(await saved.blob()) : url)
     }
 
     log('streamPlay: CACHE MISS — generating locally')

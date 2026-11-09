@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 
 const BASE = 'https://huggingface.co/datasets/serge-ivo/books-audio/resolve/main'
+export const MANIFEST_URL = `${BASE}/manifest.json`
 
 /** voice id → book slug → seconds of audio per chapter (null: chapter not narrated) */
 export type PreparedManifest = Record<string, Record<string, (number | null)[]>>
@@ -14,11 +15,17 @@ let manifestPromise: Promise<PreparedManifest> | null = null
 let loadedManifest: PreparedManifest | null = null
 
 export function loadPreparedManifest(): Promise<PreparedManifest> {
-  manifestPromise ??= fetch(`${BASE}/manifest.json`)
-    .then(r => (r.ok ? r.json() : {}))
-    .catch(() => ({}))
+  manifestPromise ??= fetch(MANIFEST_URL)
+    .then(r => (r.ok ? r.json() : savedManifest()))
+    .catch(savedManifest)
     .then(m => (loadedManifest = m))
   return manifestPromise
+}
+
+/** Offline: the copy kept with saved books (offlineBooks.ts), so saved narration still plays. */
+async function savedManifest(): Promise<PreparedManifest> {
+  const saved = typeof caches === 'undefined' ? undefined : await caches.match(MANIFEST_URL).catch(() => undefined)
+  return saved ? saved.json() : {}
 }
 
 /** The manifest if it has loaded, else null. */

@@ -4,6 +4,8 @@ import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { NavBar } from '../components/NavBar'
 import { LibraryButton } from '../components/LibraryButton'
 import { SmartPlayButtons } from '../components/SmartPlayButtons'
+import { SaveOfflineButton } from '../components/SaveOfflineButton'
+import { fetchSavedOr } from '../hooks/offlineBooks'
 import { getReaderFontSize } from '../hooks/usePreferences'
 import { saveProgress, getProgress } from '../hooks/useReadingProgress'
 import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
@@ -26,6 +28,7 @@ export function ReaderPage() {
   const [chapters, setChapters] = useState<ReaderChapter[]>([])
   const [activeChapter, setActiveChapter] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [notSavedOffline, setNotSavedOffline] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [libraryVersion, setLibraryVersion] = useState(0)
   const [fontSize] = useState(getReaderFontSize)
@@ -110,7 +113,8 @@ export function ReaderPage() {
     setBookAuthor(catalogBook.author)
 
     try {
-      const res = await fetch(catalogBook.contentPath)
+      // A book saved for offline opens from this device (books#7)
+      const res = await fetchSavedOr(catalogBook.contentPath)
       if (!res.ok) throw new Error('Failed to load')
       const data = await res.json() as { chapters: { title: string; content: string }[] }
       const chaptersList = data.chapters.map((ch, i) => ({
@@ -124,6 +128,7 @@ export function ReaderPage() {
       pendingScrollRef.current = saved?.chapterIdx === startIdx ? saved.scroll ?? 0 : 0
       if (chaptersList.length > 0) setActiveChapter(chaptersList[startIdx].id)
     } catch {
+      setNotSavedOffline(!navigator.onLine)
       setChapters([{ id: 'excerpt', title: 'Excerpt', content: catalogBook.excerpt }])
       setActiveChapter('excerpt')
     }
@@ -214,6 +219,7 @@ export function ReaderPage() {
         subtitle={bookAuthor ? `${bookAuthor} · ${bookGenre}` : bookGenre}
         actions={<>
           {narrated && <LibraryButton slug={slug || ''} title={bookTitle} totalChapters={chapters.length} />}
+          <SaveOfflineButton slug={slug || ''} />
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="md:hidden px-2.5 py-1.5 rounded-lg text-xs text-text-muted border border-border"
@@ -280,6 +286,12 @@ export function ReaderPage() {
             </div>
           </div>
         </section>
+      )}
+
+      {notSavedOffline && (
+        <div className="border-b border-border bg-warning/10 px-4 py-3 text-center text-sm text-warning">
+          You're offline and this book isn't saved on this device. Only the excerpt is available.
+        </div>
       )}
 
       {/* Mobile chapter drawer */}

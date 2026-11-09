@@ -7,6 +7,7 @@ import { getAllProgress, getProgressPercent } from '../hooks/useReadingProgress'
 import { getLibrary, LIBRARY_CHANGED_EVENT, type LibraryBook } from '../hooks/useLibrary'
 import { getSavedKokoroVoice, isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
 import { isNarrated, preparedCount, usePreparedManifest, type PreparedManifest } from '../hooks/preparedAudio'
+import { useOfflineBooks, useOnline } from '../hooks/offlineBooks'
 
 interface AiBookState {
   inLibrary: boolean
@@ -21,6 +22,10 @@ export function CatalogPage() {
   const [sort, setSort] = useState<'title' | 'author' | 'year'>('title')
   const [library, setLibrary] = useState<LibraryBook[]>(() => getLibrary())
   const manifest = usePreparedManifest()
+  const { saved } = useOfflineBooks()
+  const online = useOnline()
+  // Offline, only books saved on this device can be opened (books#7)
+  const dim = (id: string) => (!online && !saved[id] ? 'opacity-40' : '')
 
   useEffect(() => {
     function handleLibraryChanged() {
@@ -210,7 +215,7 @@ export function CatalogPage() {
                 const pct = getProgressPercent(book.id)
                 const ai = catalogWithAi.find(entry => entry.book.id === book.id)?.ai
                 return (
-                  <Link key={book.id} to={`/read/${book.id}`} className="group">
+                  <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
                     <BookCover book={book} size="lg" />
                     <div className="mt-2 flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -240,7 +245,7 @@ export function CatalogPage() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
             {aiReadyNow.map(({ book, ai }) => (
-              <Link key={book.id} to={`/read/${book.id}`} className="group">
+              <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
                 <BookCover book={book} size="lg" />
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
@@ -263,7 +268,7 @@ export function CatalogPage() {
           </div>
           <div className="grid gap-3 md:gap-4">
             {queuedOnDesktop.map(({ book, ai }) => (
-              <BookListItem key={`queued-${book.id}`} book={book} ai={ai} />
+              <BookListItem key={`queued-${book.id}`} book={book} ai={ai} saved={Boolean(saved[book.id])} online={online} />
             ))}
           </div>
         </section>
@@ -274,7 +279,7 @@ export function CatalogPage() {
           <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">Featured</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
             {featured.map(({ book, ai }) => (
-              <Link key={book.id} to={`/read/${book.id}`} className="group">
+              <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
                 <BookCover book={book} size="lg" />
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
@@ -292,7 +297,7 @@ export function CatalogPage() {
         </h2>
         <div className="grid gap-3 md:gap-4">
           {filtered.map(({ book, ai }) => (
-            <BookListItem key={book.id} book={book} ai={ai} />
+            <BookListItem key={book.id} book={book} ai={ai} saved={Boolean(saved[book.id])} online={online} />
           ))}
           {filtered.length === 0 && (
             <p className="text-text-muted py-12 text-center">No books match your search.</p>
@@ -309,13 +314,13 @@ export function CatalogPage() {
   )
 }
 
-function BookListItem({ book, ai }: { book: CatalogBook; ai: AiBookState }) {
+function BookListItem({ book, ai, saved, online }: { book: CatalogBook; ai: AiBookState; saved: boolean; online: boolean }) {
   const pct = getProgressPercent(book.id)
 
   return (
     <Link
       to={`/read/${book.id}`}
-      className="group flex gap-3 md:gap-5 bg-surface border border-border rounded-lg p-3 md:p-4 hover:border-accent transition"
+      className={`group flex gap-3 md:gap-5 bg-surface border border-border rounded-lg p-3 md:p-4 hover:border-accent transition ${!online && !saved ? 'opacity-40' : ''}`}
     >
       <BookCover book={book} size="sm" />
       <div className="flex-1 min-w-0">
@@ -334,6 +339,8 @@ function BookListItem({ book, ai }: { book: CatalogBook; ai: AiBookState }) {
             <span key={t} className="text-[11px] md:text-xs px-1.5 md:px-2 py-0.5 rounded-full border border-border text-text-dim">{t}</span>
           ))}
           <span className="text-[11px] md:text-xs text-text-dim ml-auto flex items-center gap-2">
+            {saved && <span className="text-success">✓ Saved offline</span>}
+            {!saved && !online && <span>Not saved: unavailable offline</span>}
             {pct > 0 && pct < 100 && (
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block w-12 h-1 bg-surface-hover rounded-full overflow-hidden">
