@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { CATALOG } from '../data/catalog'
+import { coverUrl } from '../components/BookCover'
 import { MANIFEST_URL, preparedUrl, type PreparedManifest } from './preparedAudio'
 
 const CACHE = 'books-offline-v1'
@@ -133,6 +134,10 @@ export async function saveBook(slug: string, voice: string) {
     total = estimateAudioBytes(manifest, slug, voice) || 1
 
     await store(new URL(book.contentPath, location.href).href, true)
+    // The service worker keeps covers in its own runtime cache (book-covers-v1, never evicted
+    // at catalogue size), so fetching it once is enough for it to show offline (books#8)
+    const cover = coverUrl(slug)
+    if (cover) await fetch(cover, { signal }).catch(() => {})
     if (narrated) await cache.put(MANIFEST_URL, manifestRes)
     for (let i = 0; i < durations.length; i++) {
       if (durations[i] == null) continue

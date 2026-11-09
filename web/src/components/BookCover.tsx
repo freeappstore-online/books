@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { CatalogBook } from '../data/catalog'
+import { COVERS } from '../data/covers'
 
 interface Props {
   book: CatalogBook
@@ -11,8 +13,16 @@ const sizes = {
   lg: { w: 'w-48', h: 'h-68', title: 'text-base', author: 'text-sm' },
 }
 
+/** The book's self-hosted Gutenberg cover, or null if it has none. The service worker
+ *  runtime-caches /covers/ (vite.config.ts), so fetching this URL while online keeps it offline. */
+export function coverUrl(id: string): string | null {
+  return COVERS.has(id) ? `/covers/${id}.webp` : null
+}
+
 export function BookCover({ book, size = 'md' }: Props) {
   const s = sizes[size]
+  const [failed, setFailed] = useState(false)
+  const src = failed ? null : coverUrl(book.id)
   return (
     <div className={`${s.w} ${s.h} rounded-lg bg-gradient-to-br ${book.coverGradient} relative overflow-hidden flex flex-col justify-end p-3 shadow-lg group-hover:shadow-xl transition-shadow`}>
       <div className="absolute inset-0 opacity-10" style={{
@@ -23,6 +33,16 @@ export function BookCover({ book, size = 'md' }: Props) {
         <p className={`${s.author} text-white/60`}>{book.author}</p>
       </div>
       <div className="absolute top-2 right-2 w-6 h-6 rounded-full opacity-20" style={{ background: book.coverAccent }} />
+      {src && (
+        <img
+          src={src}
+          alt={`${book.title} by ${book.author}`}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+          className="absolute inset-0 z-20 w-full h-full object-cover"
+        />
+      )}
     </div>
   )
 }
