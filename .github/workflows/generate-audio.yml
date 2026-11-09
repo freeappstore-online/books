@@ -1,0 +1,91 @@
+name: Generate audio
+
+# Pre-generates Kokoro narration for the public catalogue and uploads it to the
+# serge-ivo/books-audio dataset on Hugging Face (books#4). Run by hand; it skips
+# books that already have VOICE/<slug>/index.json, so a re-run resumes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      voice:
+        description: Kokoro voice id
+        default: af_heart
+      books:
+        description: Space-separated slugs (empty = every book not yet narrated)
+        default: ''
+      shards:
+        description: Parallel jobs
+        default: '40'
+
+permissions:
+  contents: read
+
+env:
+  REPO: serge-ivo/books-audio
+  HF_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+  HF_HUB_DISABLE_PROGRESS_BARS: '1'
+  VOICE: ${{ inputs.voice }}
+  BOOKS: ${{ inputs.books }}
+  SHARDS: ${{ inputs.shards }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q -r scripts/audio/requirements.txt
+      - run: hf repos create "$REPO" --repo-type dataset --public --exist-ok
+      - id: plan
+        run: echo "matrix=$(python scripts/audio/plan.py web/public/catalog "$REPO" "$VOICE" "$SHARDS" $BOOKS)" >> "$GITHUB_OUTPUT"
+
+  generate:
+    needs: plan
+    if: needs.plan.outputs.matrix != '{"include": []}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get install -y -qq ffmpeg > /dev/null
+      - run: pip install -q -r scripts/audio/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: models
+          key: kokoro-v1.0
+      - name: Download model
+        run: |
+          mkdir -p models && cd models
+          base=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+          for f in kokoro-v1.0.onnx voices-v1.0.bin; do [ -f "$f" ] || curl -fsSL -o "$f" "$base/$f"; done
+      - name: Narrate and upload, one book at a time
+        env:
+          SLUGS: ${{ matrix.slugs }}
+        run: |
+          for slug in $SLUGS; do
+            python scripts/audio/generate.py models web/public/catalog out "$VOICE" "$slug"
+            hf upload "$REPO" "out/$VOICE/$slug" "$VOICE/$slug" --repo-type dataset --commit-message "$VOICE/$slug"
+            rm -rf "out/$VOICE/$slug"
+          done
+
+  manifest:
+    needs: generate
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q -r scripts/audio/requirements.txt
+      - run: python scripts/audio/manifest.py "$REPO" manifest.json
+      - run: hf upload "$REPO" manifest.json manifest.json --repo-type dataset --commit-message "manifest"
