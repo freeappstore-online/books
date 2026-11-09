@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { preparedCount, usePreparedManifest, VOICE } from '../hooks/preparedAudio'
 import {
@@ -9,6 +10,27 @@ import {
  * every narrated chapter; a book without narration saves its text only.
  */
 export function SaveOfflineButton({ slug }: { slug: string }) {
+  const { saved, jobs, errors } = useOfflineBooks()
+  const saving = Boolean(jobs[slug])
+  const wasSaving = useRef(saving)
+  const [status, setStatus] = useState('')
+
+  // Announce when saving starts and how it ends, not every percent (books#15)
+  useEffect(() => {
+    if (saving === wasSaving.current) return
+    wasSaving.current = saving
+    setStatus(saving ? 'Saving for offline' : saved[slug] ? 'Saved for offline' : errors[slug] ? 'Saving failed' : 'Saving cancelled')
+  }, [saving, saved, errors, slug])
+
+  return (
+    <>
+      <SaveOfflineControl slug={slug} />
+      <span role="status" className="sr-only">{status}</span>
+    </>
+  )
+}
+
+function SaveOfflineControl({ slug }: { slug: string }) {
   const { saved, jobs, errors } = useOfflineBooks()
   const manifest = usePreparedManifest()
   const online = useOnline()

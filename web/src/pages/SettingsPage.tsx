@@ -16,7 +16,7 @@ export function SettingsPage() {
     <div className={`min-h-dvh bg-page text-text ${player.book ? 'pb-20' : ''}`}>
       <NavBar title="Settings" />
 
-      <div className="max-w-2xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-4 md:space-y-6">
+      <main className="max-w-2xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-4 md:space-y-6">
         <ReadingSettings
           currentTheme={currentTheme}
           setCurrentTheme={setCurrentTheme}
@@ -31,10 +31,10 @@ export function SettingsPage() {
               ? 'No books saved on this device.'
               : `${saved.length} book${saved.length === 1 ? '' : 's'} saved on this device · ${formatBytes(saved.reduce((sum, b) => sum + savedBytes(b), 0))}`}
             {' '}
-            <Link to="/library" className="text-accent hover:underline">Manage in My books</Link>
+            <Link to="/library" className="text-accent underline">Manage in My books</Link>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

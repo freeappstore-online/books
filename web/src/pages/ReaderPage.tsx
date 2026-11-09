@@ -33,6 +33,7 @@ export function ReaderPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const fontSize = useReaderFontSize()
   const [textPanelOpen, setTextPanelOpen] = useState(false)
+  const textButtonRef = useRef<HTMLButtonElement>(null)
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const themeStyle = THEME_STYLES[theme]
   const [searchOpen, setSearchOpen] = useState(false)
@@ -94,6 +95,18 @@ export function ReaderPage() {
       return target.id
     })
   }, [player.book?.slug, player.chapterIdx, slug, chapters])
+
+  // Escape closes the text size panel and returns focus to its button (books#15)
+  useEffect(() => {
+    if (!textPanelOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setTextPanelOpen(false)
+      textButtonRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [textPanelOpen])
 
   async function loadBook(bookSlug: string) {
     await loadFromCatalog(bookSlug)
@@ -228,18 +241,20 @@ export function ReaderPage() {
           </button>
           <div className="relative">
             <button
+              ref={textButtonRef}
               onClick={() => setTextPanelOpen(o => !o)}
               aria-expanded={textPanelOpen}
+              aria-controls="text-size-panel"
               aria-label="Text size"
               title="Text size"
               className={`px-2.5 py-1.5 rounded-lg text-sm border border-border transition ${textPanelOpen ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text'}`}
             >
-              <span className="text-xs">A</span><span className="text-base font-semibold">A</span>
+              <span aria-hidden="true"><span className="text-xs">A</span><span className="text-base font-semibold">A</span></span>
             </button>
             {textPanelOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setTextPanelOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-xl text-left">
+                <div id="text-size-panel" role="group" aria-label="Text size" className="absolute right-0 top-full mt-2 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-xl text-left">
                   <TextSizeControls preview={false} />
                 </div>
               </>
@@ -247,6 +262,9 @@ export function ReaderPage() {
           </div>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-expanded={sidebarOpen}
+            aria-controls="chapter-drawer"
+            aria-label={`Chapters: chapter ${visibleChapterIdx + 1} of ${chapters.length}`}
             className="md:hidden px-2.5 py-1.5 rounded-lg text-xs text-text-muted border border-border"
           >
             Ch {visibleChapterIdx + 1}/{chapters.length}
@@ -254,6 +272,7 @@ export function ReaderPage() {
           <select
             value={theme}
             onChange={e => { const t = e.target.value as Theme; setThemeState(t); setTheme(t) }}
+            aria-label="Theme"
             className="bg-surface border border-border rounded-lg px-2 py-1.5 text-xs text-text-muted hidden sm:block"
           >
             <option value="dark">Dark</option>
@@ -280,41 +299,43 @@ export function ReaderPage() {
 
       {/* Mobile chapter drawer */}
       {sidebarOpen && (
-        <div className="md:hidden border-b border-border bg-surface px-4 py-3 max-h-60 overflow-y-auto">
+        <nav id="chapter-drawer" aria-label="Chapters" className="md:hidden border-b border-border bg-surface px-4 py-3 max-h-60 overflow-y-auto">
           <div className="space-y-1">
             {chapters.map((ch, i) => (
               <button
                 key={ch.id}
                 onClick={() => { setActiveChapter(ch.id); setSidebarOpen(false); window.scrollTo(0, 0) }}
+                aria-current={activeChapter === ch.id ? 'true' : undefined}
                 className={`w-full text-left px-3 py-2.5 rounded text-sm transition flex items-center gap-2 ${
                   activeChapter === ch.id ? 'bg-surface-hover text-text' : 'text-text-muted'
                 }`}
               >
                 {isThisBookPlaying && playingChapterIdx === i && player.playing && (
-                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
                 )}
                 <span className="truncate">{ch.title}</span>
               </button>
             ))}
           </div>
-        </div>
+        </nav>
       )}
 
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 md:grid md:grid-cols-[220px_1fr] md:gap-8">
         {/* Desktop sidebar */}
-        <aside className="hidden md:block">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Chapters</h2>
+        <aside aria-labelledby="chapters-heading" className="hidden md:block">
+          <h2 id="chapters-heading" className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Chapters</h2>
           <div className="space-y-1 sticky top-6 max-h-[calc(100dvh-4rem)] overflow-y-auto">
             {chapters.map((ch, i) => (
               <button
                 key={ch.id}
                 onClick={() => { setActiveChapter(ch.id); window.scrollTo(0, 0) }}
+                aria-current={activeChapter === ch.id ? 'true' : undefined}
                 className={`w-full text-left px-3 py-2 rounded text-sm transition flex items-center gap-2 ${
                   activeChapter === ch.id ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text hover:bg-surface'
                 }`}
               >
                 {isThisBookPlaying && playingChapterIdx === i && player.playing && (
-                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
                 )}
                 <span className="truncate">{ch.title}</span>
               </button>

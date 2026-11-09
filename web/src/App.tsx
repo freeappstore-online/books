@@ -4,6 +4,7 @@ import { ReaderPage } from './pages/ReaderPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LibraryPage } from './pages/LibraryPage'
 import { AudioPlayer } from './components/AudioPlayer'
+import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 
 export function App() {
   return (
@@ -20,6 +21,7 @@ export function App() {
 
       {/* Global persistent audio player - lives outside routing */}
       <AudioPlayer />
+      <KeyboardShortcuts />
     </>
   )
 }

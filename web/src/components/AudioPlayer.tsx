@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAudioPlayer, RATES, type SleepChoice, type SleepTimer } from '../hooks/useAudioPlayer'
 import { loadSleepChoice } from '../hooks/audioStorage'
 import { getNarrationTime, useNarrationPosition } from '../hooks/narration'
@@ -62,16 +62,17 @@ export function AudioPlayer() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface/95 backdrop-blur-sm">
+    <div role="region" aria-label="Player" className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface/95 backdrop-blur-sm">
       {/* Expanded panel */}
       {expanded && (
-        <div className="border-b border-border px-4 py-3 max-w-4xl mx-auto max-h-64 overflow-y-auto">
+        <div id="player-panel" className="border-b border-border px-4 py-3 max-w-4xl mx-auto max-h-64 overflow-y-auto">
           {/* Tabs */}
           <div className="flex gap-4 mb-3 border-b border-border pb-2">
             {(['chapters', 'history'] as const).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
+                aria-pressed={tab === t}
                 className={`text-xs font-semibold uppercase tracking-wider transition ${
                   tab === t ? 'text-accent' : 'text-text-dim hover:text-text-muted'
                 }`}
@@ -88,6 +89,7 @@ export function AudioPlayer() {
                 <button
                   key={ch.id}
                   onClick={() => setChapter(i)}
+                  aria-current={i === chapterIdx ? 'true' : undefined}
                   className={`px-2 py-1 text-xs rounded transition ${
                     i === chapterIdx
                       ? 'bg-accent text-btn-text font-semibold'
@@ -111,6 +113,7 @@ export function AudioPlayer() {
                   <button
                     key={h.slug}
                     onClick={() => switchToBook(h.slug)}
+                    aria-current={book.slug === h.slug ? 'true' : undefined}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center justify-between gap-2 ${
                       book.slug === h.slug ? 'bg-accent/15 text-accent' : 'text-text-muted hover:bg-surface-hover hover:text-text'
                     }`}
@@ -133,7 +136,7 @@ export function AudioPlayer() {
       {/* Chapter position */}
       {seekable && (
         <div className="px-3 md:px-4 pt-2 max-w-4xl mx-auto flex items-center gap-2 text-[11px] tabular-nums text-text-dim">
-          <span className="w-12 text-right">{formatTime(time)}</span>
+          <span className="w-12 text-right" aria-hidden="true">{formatTime(time)}</span>
           <input
             type="range"
             min={0}
@@ -145,9 +148,10 @@ export function AudioPlayer() {
             onKeyUp={commitScrub}
             onBlur={commitScrub}
             aria-label="Position in chapter"
+            aria-valuetext={`${formatTime(time)} of ${formatTime(duration)}`}
             className="flex-1 h-1 accent-accent cursor-pointer"
           />
-          <span className="w-12">-{formatTime(Math.max(0, duration - time))}</span>
+          <span className="w-12" aria-hidden="true">-{formatTime(Math.max(0, duration - time))}</span>
         </div>
       )}
 
@@ -167,31 +171,31 @@ export function AudioPlayer() {
         {/* Controls */}
         <div className="flex items-center gap-0">
           <button onClick={prevChapter} disabled={chapterIdx === 0}
-            className="hidden sm:block p-2.5 text-text-muted hover:text-text disabled:opacity-30 transition" title="Previous chapter" aria-label="Previous chapter">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+            className="hidden sm:block p-2.5 text-text-muted hover:text-text disabled:opacity-30 transition" title="Previous chapter (Shift+←)" aria-label="Previous chapter" aria-keyshortcuts="Shift+ArrowLeft">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
           </button>
           <button onClick={() => skip(-15)} disabled={!seekable}
-            className="p-1.5 sm:p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Back 15 seconds" aria-label="Back 15 seconds">
+            className="p-1.5 sm:p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Back 15 seconds (←)" aria-label="Back 15 seconds" aria-keyshortcuts="ArrowLeft">
             <SkipIcon seconds={15} back />
           </button>
           <button onClick={playing ? pause : play}
             className="p-2 w-11 h-11 rounded-full bg-accent text-btn-text hover:bg-accent-hover transition flex items-center justify-center"
-            title={playing ? 'Pause' : 'Resume'} aria-label={playing ? 'Pause' : 'Resume'}>
+            title={playing ? 'Pause (Space)' : 'Resume (Space)'} aria-label={playing ? 'Pause' : 'Resume'} aria-keyshortcuts="Space K">
             {loading ? (
               <div className="w-5 h-5 border-2 border-btn-text border-t-transparent rounded-full animate-spin" />
             ) : playing ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
             ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             )}
           </button>
           <button onClick={() => skip(30)} disabled={!seekable}
-            className="p-1.5 sm:p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Forward 30 seconds" aria-label="Forward 30 seconds">
+            className="p-1.5 sm:p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Forward 30 seconds (→)" aria-label="Forward 30 seconds" aria-keyshortcuts="ArrowRight">
             <SkipIcon seconds={30} />
           </button>
           <button onClick={nextChapter} disabled={chapterIdx >= totalChapters - 1}
-            className="hidden sm:block p-2.5 text-text-muted hover:text-text disabled:opacity-30 transition" title="Next chapter" aria-label="Next chapter">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
+            className="hidden sm:block p-2.5 text-text-muted hover:text-text disabled:opacity-30 transition" title="Next chapter (Shift+→)" aria-label="Next chapter" aria-keyshortcuts="Shift+ArrowRight">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
           </button>
         </div>
 
@@ -201,8 +205,9 @@ export function AudioPlayer() {
         {/* Expand toggle */}
         <button onClick={() => setExpanded(!expanded)}
           className="p-2 sm:p-2.5 text-text-muted hover:text-text transition"
+          aria-expanded={expanded} aria-controls="player-panel"
           aria-label={expanded ? 'Hide chapters' : 'Show chapters'}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             {expanded
               ? <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
               : <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
@@ -219,6 +224,8 @@ const QUICK_RATES = [0.75, 1, 1.25, 1.5, 2]
 
 function SpeedButton({ rate, setRate }: { rate: number; setRate: (r: number) => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const close = () => { setMenuOpen(false); buttonRef.current?.focus() }
   const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const longPressed = useRef(false)
 
@@ -230,6 +237,7 @@ function SpeedButton({ rate, setRate }: { rate: number; setRate: (r: number) => 
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         onClick={cycle}
         onPointerDown={() => {
           longPressed.current = false
@@ -239,15 +247,16 @@ function SpeedButton({ rate, setRate }: { rate: number; setRate: (r: number) => 
         onPointerLeave={() => clearTimeout(pressTimer.current)}
         onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}
         className="min-w-9 sm:min-w-11 px-1 sm:px-1.5 py-2 text-xs font-semibold tabular-nums text-text-muted hover:text-text transition select-none"
-        title="Speed (hold for all speeds)"
+        title="Speed (hold for all speeds; [ and ] step it)"
         aria-label={`Speed ${rate}x`}
+        aria-keyshortcuts="[ ]"
       >
         {rate}x
       </button>
       {menuOpen && (
-        <BarMenu label="Speed" onClose={() => setMenuOpen(false)}>
+        <BarMenu label="Speed" onClose={close}>
           {RATES.map(r => (
-            <MenuItem key={r} checked={r === rate} onClick={() => { setRate(r); setMenuOpen(false) }}>
+            <MenuItem key={r} checked={r === rate} onClick={() => { setRate(r); close() }}>
               {r}x
             </MenuItem>
           ))}
@@ -269,18 +278,22 @@ function SleepButton({ timer, start, extend, cancel }: {
   cancel: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const last = menuOpen ? loadSleepChoice() : null
-  const close = () => setMenuOpen(false)
+  const close = () => { setMenuOpen(false); buttonRef.current?.focus() }
 
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         onClick={() => setMenuOpen(!menuOpen)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
         className={`flex items-center gap-1 p-1.5 sm:p-2 text-xs font-semibold tabular-nums transition ${timer ? 'text-accent' : 'text-text-muted hover:text-text'}`}
         title="Sleep timer"
         aria-label={timer ? `Sleep timer: ${timer.choice === 'chapter' ? 'end of chapter' : formatTime(timer.remaining / 1000)}` : 'Sleep timer'}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.3 2a10 10 0 1 0 9.7 12.6A8 8 0 0 1 12.3 2z"/></svg>
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.3 2a10 10 0 1 0 9.7 12.6A8 8 0 0 1 12.3 2z"/></svg>
         {timer && <span>{timer.choice === 'chapter' ? 'Ch' : formatTime(timer.remaining / 1000)}</span>}
       </button>
       {menuOpen && (
@@ -292,7 +305,7 @@ function SleepButton({ timer, start, extend, cancel }: {
             </>
           )}
           {timer && <MenuItem onClick={() => { cancel(); close() }}>Turn off timer</MenuItem>}
-          {timer && <div className="my-1 border-t border-border" />}
+          {timer && <div role="separator" className="my-1 border-t border-border" />}
           {SLEEP_CHOICES.map(c => (
             <MenuItem key={c} checked={timer ? timer.choice === c : last === c} onClick={() => { start(c); close() }}>
               {sleepLabel(c)}
@@ -304,12 +317,35 @@ function SleepButton({ timer, start, extend, cancel }: {
   )
 }
 
-/** Popover above a bar button; a click outside closes it. */
+/**
+ * Popover above a bar button; a click outside closes it. Keyboard (books#15): focus moves
+ * into it, arrows/Home/End move between items, Escape or Tab closes it (onClose returns focus).
+ */
 function BarMenu({ label, onClose, children }: { label: string; onClose: () => void; children: React.ReactNode }) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const menu = menuRef.current
+    ;(menu?.querySelector<HTMLElement>('[aria-checked="true"]') ?? menu?.querySelector<HTMLElement>('[role^="menuitem"]'))?.focus()
+  }, [])
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])
+    const i = items.indexOf(document.activeElement as HTMLElement)
+    const go = (j: number) => items[(j + items.length) % items.length]?.focus()
+    const keys: Record<string, () => void> = {
+      Escape: onClose, Tab: onClose,
+      ArrowDown: () => go(i + 1), ArrowUp: () => go(i - 1), Home: () => go(0), End: () => go(items.length - 1),
+    }
+    if (!keys[e.key]) return
+    e.preventDefault()
+    keys[e.key]()
+  }
+
   return (
     <>
       <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div role="menu" aria-label={label} className="absolute bottom-full right-0 mb-2 z-20 max-h-72 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg py-1">
+      <div ref={menuRef} role="menu" aria-label={label} onKeyDown={onKeyDown} className="absolute bottom-full right-0 mb-2 z-20 max-h-72 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg py-1">
         {children}
       </div>
     </>
@@ -320,6 +356,7 @@ function MenuItem({ checked, onClick, children }: { checked?: boolean; onClick: 
   return (
     <button
       role={checked === undefined ? 'menuitem' : 'menuitemradio'}
+      tabIndex={-1}
       aria-checked={checked}
       onClick={onClick}
       className={`block w-full whitespace-nowrap px-4 py-1.5 text-left text-xs tabular-nums transition ${
@@ -333,7 +370,7 @@ function MenuItem({ checked, onClick, children }: { checked?: boolean; onClick: 
 
 function SkipIcon({ seconds, back = false }: { seconds: number; back?: boolean }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <g transform={back ? undefined : 'translate(24 0) scale(-1 1)'}>
         <path d="M4 12a8 8 0 1 0 2.5-5.8" />
         <path d="M4 3v4h4" />

@@ -18,10 +18,10 @@ export function LibraryPage() {
     <div className={`min-h-dvh bg-page text-text ${player.book ? 'pb-20' : ''}`}>
       <NavBar title="My books" />
 
-      <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">
+      <main className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <SavedBooks />
         <InProgress />
-      </div>
+      </main>
     </div>
   )
 }
@@ -45,7 +45,7 @@ function InProgress() {
       <h2 className="text-lg font-display mb-3">In progress</h2>
       {books.length === 0 ? (
         <p className="text-sm text-text-muted">
-          Books you start reading or listening to show up here. <Link to="/" className="text-accent hover:underline">Browse books</Link>
+          Books you start reading or listening to show up here. <Link to="/" className="text-accent underline">Browse books</Link>
         </p>
       ) : (
         <div className="divide-y divide-border">

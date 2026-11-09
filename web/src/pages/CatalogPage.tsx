@@ -54,6 +54,7 @@ export function CatalogPage() {
     <div className="min-h-dvh bg-page text-text">
       <NavBar />
 
+      <main>
       <section className="px-4 md:px-6 py-10 md:py-16 max-w-6xl mx-auto">
         <div>
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-display leading-tight mb-3 md:mb-4">
@@ -70,12 +71,16 @@ export function CatalogPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search books, authors, genres, topics..."
-              className="w-full md:flex-1 md:min-w-64 bg-surface border border-border rounded-lg px-4 py-3 text-text placeholder-text-dim focus:outline-none focus:border-accent transition"
+              aria-label="Search books"
+              aria-keyshortcuts="/"
+              data-shortcut="search"
+              className="w-full md:flex-1 md:min-w-64 bg-surface border border-border rounded-lg px-4 py-3 text-text placeholder-text-dim focus:border-accent transition"
             />
             <div className="flex gap-2">
               <select
                 value={genre}
                 onChange={e => setGenre(e.target.value)}
+                aria-label="Genre"
                 className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-sm"
               >
                 <option value="">All Genres</option>
@@ -84,6 +89,7 @@ export function CatalogPage() {
               <select
                 value={sort}
                 onChange={e => setSort(e.target.value as 'title' | 'author' | 'year')}
+                aria-label="Sort"
                 className="flex-1 md:flex-none bg-surface border border-border rounded-lg px-3 py-3 text-text text-sm"
               >
                 <option value="title">By Title</option>
@@ -97,6 +103,7 @@ export function CatalogPage() {
             {tag && (
               <button
                 onClick={() => setTag('')}
+                aria-label={`Remove filter: ${tag}`}
                 className="text-xs px-3 py-1 rounded-full bg-accent text-btn-text font-semibold"
               >
                 {tag} &times;
@@ -196,6 +203,7 @@ export function CatalogPage() {
           )}
         </div>
       </section>
+      </main>
 
       <footer className="pt-4 pb-8 text-center">
         <a href="https://freeappstore.online" target="_blank" rel="noopener" className="text-[11px] font-medium text-text-dim hover:text-text transition-colors">

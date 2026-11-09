@@ -49,7 +49,7 @@ const Block = memo(function Block({ text, s0, s1, w0, w1, marks }: {
     const [a, b] = [cuts[i], cuts[i + 1]]
     let piece: ReactNode = text.slice(a, b)
     if (a >= w0 && b <= w1) {
-      piece = <mark data-readalong="word" className="bg-accent/35 text-inherit rounded-sm">{piece}</mark>
+      piece = <mark data-readalong="word" className="bg-accent/35 text-text rounded-sm">{piece}</mark>
     } else if (a >= s0 && b <= s1) {
       piece = <span data-readalong="sentence" className="bg-accent/10 rounded-sm">{piece}</span>
     }
@@ -127,6 +127,8 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
   useEffect(() => {
     const stop = () => { if (hasHighlightRef.current) setFollowing(false) }
     const onKey = (e: KeyboardEvent) => {
+      // Space as play/pause (KeyboardShortcuts) is not a scroll
+      if (e.defaultPrevented) return
       if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) stop()
     }
     window.addEventListener('wheel', stop, { passive: true })
@@ -184,6 +186,9 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
       {hl && !following && (
         <button
           onClick={() => setFollowing(true)}
+          data-shortcut="follow"
+          aria-keyshortcuts="F"
+          title="Follow audio (F)"
           className="fixed right-4 bottom-24 z-40 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-btn-text shadow-lg hover:bg-accent-hover transition"
         >
           Follow audio
