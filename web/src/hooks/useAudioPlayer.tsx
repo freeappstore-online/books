@@ -15,7 +15,7 @@ import {
 import { getLoadedManifest, isNarrated, isPrepared, loadPreparedManifest, preparedUrl } from './preparedAudio'
 import {
   loadRate, saveRate, loadVoice, saveVoice, loadEngine, saveEngine,
-  loadHistory, saveHistory, loadPosition, savePosition,
+  loadHistory, saveHistory, loadPosition, savePosition, saveSleepChoice,
   type HistoryEntry,
 } from './audioStorage'
 import { getTtsCode } from './useLanguage'
@@ -23,6 +23,18 @@ import { getTtsCode } from './useLanguage'
 export const RATES = [0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3]
 
 export type TtsEngine = 'browser' | 'kokoro'
+
+/** Sleep after this many minutes of playback, or at the end of the chapter. */
+export type SleepChoice = number | 'chapter'
+
+export interface SleepTimer {
+  choice: SleepChoice
+  /** Playback time left, in ms (minutes timers only) */
+  remaining: number
+}
+
+// The sleep timer fades the volume out over its last seconds
+const SLEEP_FADE_MS = 10_000
 
 export interface AudioChapter {
   id: string
@@ -73,6 +85,11 @@ interface AudioPlayerState {
   skip: (seconds: number) => void
   /** Move AI narration of the current chapter to `seconds` */
   seekAi: (seconds: number) => void
+  sleepTimer: SleepTimer | null
+  startSleepTimer: (choice: SleepChoice) => void
+  /** Add minutes to a running timer */
+  extendSleepTimer: (minutes: number) => void
+  cancelSleepTimer: () => void
   setRate: (rate: number) => void
   setVoiceName: (name: string) => void
   setEngine: (engine: TtsEngine) => void
@@ -127,6 +144,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const kokoroPlayerRef = useRef<KokoroPlayback | null>(null)
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory)
+  const [sleepTimer, setSleepTimer] = useState<SleepTimer | null>(null)
+  const sleepTimerRef = useRef(sleepTimer)
+  sleepTimerRef.current = sleepTimer
+  // Playback volume, lowered by the sleep timer's fade
+  const volumeRef = useRef(1)
 
   // Silent audio loop keeps the page alive when screen is locked on mobile.
   // Without this, the OS suspends the tab and SpeechSynthesis stops.
@@ -231,13 +253,28 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   /** Chapter `idx` finished: play the next one, or stop at the end of the book. */
   const finishChapter = useCallback((idx: number) => {
     const b = bookRef.current
+    if (sleepTimerRef.current?.choice === 'chapter') {
+      // Sleep timer: stop here and resume with the next chapter
+      halt()
+      setPlaying(false)
+      setSleepTimer(null)
+      volumeRef.current = 1
+      if (b && idx + 1 < b.chapters.length) {
+        setChapterIdx(idx + 1)
+        chapterIdxRef.current = idx + 1
+        currentCharOffsetRef.current = 0
+        setChapterOffset(0)
+        savePosition(b.slug, idx + 1, 0)
+      }
+      return
+    }
     if (b && idx + 1 < b.chapters.length) {
       startPlayback(idx + 1, 0)
     } else {
       setPlaying(false)
       setWordHighlight(null)
     }
-  }, [startPlayback])
+  }, [startPlayback, halt])
 
   const speakBrowser = useCallback((idx: number, offset: number) => {
     const b = bookRef.current
@@ -259,6 +296,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       utterance.rate = rateRef.current
       // Without a lang, a missing voice falls back to the system default, which may not be English
       utterance.lang = getTtsCode()
+      utterance.volume = volumeRef.current
       const voice = speechSynthesis.getVoices().find(v => v.name === voiceNameRef.current)
       if (voice) utterance.voice = voice
 
@@ -341,6 +379,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         return
       }
       kokoroPlayerRef.current = player
+      player.setVolume?.(volumeRef.current)
       // Muted while it was loading
       if (mutedRef.current) player.mute()
     } catch (err) {
@@ -490,6 +529,63 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     savePosition(b.slug, idx, offset)
   }, [preparedChapter, setChapterAndPlay, playing, speakBrowser])
 
+  const setVolume = useCallback((v: number) => {
+    volumeRef.current = v
+    kokoroPlayerRef.current?.setVolume?.(v)
+  }, [])
+
+  const startSleepTimer = useCallback((choice: SleepChoice) => {
+    saveSleepChoice(choice)
+    setSleepTimer({ choice, remaining: choice === 'chapter' ? 0 : choice * 60_000 })
+    setVolume(1)
+  }, [setVolume])
+
+  const extendSleepTimer = useCallback((minutes: number) => {
+    setSleepTimer(t => t && t.choice !== 'chapter' ? { ...t, remaining: t.remaining + minutes * 60_000 } : t)
+    setVolume(1)
+  }, [setVolume])
+
+  const cancelSleepTimer = useCallback(() => {
+    setSleepTimer(null)
+    setVolume(1)
+  }, [setVolume])
+
+  // The sleep timer counts playback time only. Ticks measure the wall clock, so
+  // throttled timers on a locked screen still end it on time.
+  const sleepChoice = sleepTimer?.choice
+  useEffect(() => {
+    if (sleepChoice === undefined || !playing) return
+    let last = Date.now()
+    const id = setInterval(() => {
+      const now = Date.now()
+      const elapsed = now - last
+      last = now
+      const t = sleepTimerRef.current
+      if (!t) return
+      if (t.choice === 'chapter') {
+        // finishChapter stops at the end; fade AI narration over its last seconds
+        const prepared = engineRef.current === 'kokoro' ? preparedChapter() : null
+        if (prepared) {
+          const leftMs = (prepared.seconds - getPreparedTime(prepared.url)) / rateRef.current * 1000
+          setVolume(Math.min(1, Math.max(0, leftMs / SLEEP_FADE_MS)))
+        }
+        return
+      }
+      const remaining = t.remaining - elapsed
+      if (remaining <= 0) {
+        pause()
+        setSleepTimer(null)
+        setVolume(1)
+        return
+      }
+      setVolume(Math.min(1, remaining / SLEEP_FADE_MS))
+      // Ahead of the render: the next tick may come first
+      sleepTimerRef.current = { ...t, remaining }
+      setSleepTimer(sleepTimerRef.current)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [sleepChoice, playing, pause, preparedChapter, setVolume])
+
   // Media Session API — lock screen controls + background audio metadata
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
@@ -578,6 +674,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       engine, kokoroLoading, kokoroGenerated, kokoroTotal, kokoroVoice, kokoroRuntime,
       loadAndPlay, play, pause, stop, toggleMute,
       setChapter: setChapterAndPlay, nextChapter, prevChapter, skip, seekAi,
+      sleepTimer, startSleepTimer, extendSleepTimer, cancelSleepTimer,
       setRate, setVoiceName, setEngine, setKokoroVoice: setKokoroVoiceVal,
     }}>
       {children}

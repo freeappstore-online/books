@@ -383,6 +383,8 @@ export interface KokoroPlayback {
   unmute: () => void
   /** Change speed without restarting; absent where scheduled audio can't follow */
   setRate?: (rate: number) => void
+  /** 0..1, for the sleep timer's fade; absent where it isn't supported */
+  setVolume?: (volume: number) => void
 }
 
 export async function kokoroStreamPlay(
@@ -459,6 +461,8 @@ export async function kokoroStreamPlay(
     audio.addEventListener('error', onErr)
     audio.playbackRate = rate
     audio.defaultPlaybackRate = rate
+    // A sleep timer may have faded the previous chapter
+    audio.volume = 1
     audio.play().catch(err => { if (mine() && !stopped) onError(err) })
     return {
       stop() {
@@ -482,6 +486,7 @@ export async function kokoroStreamPlay(
         audio.playbackRate = r
         audio.defaultPlaybackRate = r
       },
+      setVolume(v: number) { if (mine()) audio.volume = v },
     }
   }
 

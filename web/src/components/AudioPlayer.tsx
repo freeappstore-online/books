@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { useAudioPlayer, RATES } from '../hooks/useAudioPlayer'
+import { useAudioPlayer, RATES, type SleepChoice, type SleepTimer } from '../hooks/useAudioPlayer'
+import { loadSleepChoice } from '../hooks/audioStorage'
 import { KOKORO_VOICES, KOKORO_LANGUAGES, isMobileDevice, useKokoroReady, usePreparedPosition, getPreparedTime } from '../hooks/useKokoro'
 import { isNarrated, preparedCount, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
 import { useNavigate } from 'react-router-dom'
@@ -11,6 +12,7 @@ export function AudioPlayer() {
     book, playing, muted, chapterIdx, chapterOffset, rate, voiceName, voices, history,
     engine, kokoroLoading, kokoroGenerated, kokoroTotal, kokoroVoice, kokoroRuntime,
     play, pause, nextChapter, prevChapter, skip, seekAi, setRate, setVoiceName,
+    sleepTimer, startSleepTimer, extendSleepTimer, cancelSleepTimer,
     setChapter, toggleMute, loadAndPlay, setEngine, setKokoroVoice,
   } = useAudioPlayer()
   const [expanded, setExpanded] = useState(false)
@@ -294,7 +296,7 @@ export function AudioPlayer() {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
           </button>
           <button onClick={() => skip(-15)} disabled={!canSkip}
-            className="p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Back 15 seconds" aria-label="Back 15 seconds">
+            className="p-1.5 sm:p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Back 15 seconds" aria-label="Back 15 seconds">
             <SkipIcon seconds={15} back />
           </button>
           <button onClick={playing ? pause : play} disabled={kokoroLoading}
@@ -308,7 +310,7 @@ export function AudioPlayer() {
             )}
           </button>
           <button onClick={() => skip(30)} disabled={!canSkip}
-            className="p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Forward 30 seconds" aria-label="Forward 30 seconds">
+            className="p-1.5 sm:p-2 text-text-muted hover:text-text disabled:opacity-30 transition" title="Forward 30 seconds" aria-label="Forward 30 seconds">
             <SkipIcon seconds={30} />
           </button>
           <button onClick={nextChapter} disabled={chapterIdx >= totalChapters - 1 || kokoroLoading}
@@ -318,6 +320,7 @@ export function AudioPlayer() {
         </div>
 
         <SpeedButton rate={rate} setRate={setRate} />
+        <SleepButton timer={sleepTimer} start={startSleepTimer} extend={extendSleepTimer} cancel={cancelSleepTimer} />
 
         {/* Mute */}
         <button onClick={toggleMute}
@@ -332,7 +335,7 @@ export function AudioPlayer() {
 
         {/* Expand toggle */}
         <button onClick={() => setExpanded(!expanded)}
-          className="p-2.5 text-text-muted hover:text-text transition">
+          className="p-2 sm:p-2.5 text-text-muted hover:text-text transition">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             {expanded
               ? <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
@@ -369,33 +372,96 @@ function SpeedButton({ rate, setRate }: { rate: number; setRate: (r: number) => 
         onPointerUp={() => clearTimeout(pressTimer.current)}
         onPointerLeave={() => clearTimeout(pressTimer.current)}
         onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}
-        className="min-w-11 px-1.5 py-2 text-xs font-semibold tabular-nums text-text-muted hover:text-text transition select-none"
+        className="min-w-9 sm:min-w-11 px-1 sm:px-1.5 py-2 text-xs font-semibold tabular-nums text-text-muted hover:text-text transition select-none"
         title="Speed (hold for all speeds)"
         aria-label={`Speed ${rate}x`}
       >
         {rate}x
       </button>
       {menuOpen && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-          <div role="menu" className="absolute bottom-full right-0 mb-2 z-20 max-h-72 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg py-1">
-            {RATES.map(r => (
-              <button
-                key={r}
-                role="menuitemradio"
-                aria-checked={r === rate}
-                onClick={() => { setRate(r); setMenuOpen(false) }}
-                className={`block w-full px-4 py-1.5 text-left text-xs tabular-nums transition ${
-                  r === rate ? 'text-accent font-semibold' : 'text-text-muted hover:bg-surface-hover hover:text-text'
-                }`}
-              >
-                {r}x
-              </button>
-            ))}
-          </div>
-        </>
+        <BarMenu label="Speed" onClose={() => setMenuOpen(false)}>
+          {RATES.map(r => (
+            <MenuItem key={r} checked={r === rate} onClick={() => { setRate(r); setMenuOpen(false) }}>
+              {r}x
+            </MenuItem>
+          ))}
+        </BarMenu>
       )}
     </div>
+  )
+}
+
+const SLEEP_CHOICES: SleepChoice[] = [5, 15, 30, 45, 60, 'chapter']
+
+const sleepLabel = (c: SleepChoice) => c === 'chapter' ? 'End of chapter' : `${c} minutes`
+
+/** Moon button: picks a sleep timer, then shows its countdown; tapping that cancels or extends it. */
+function SleepButton({ timer, start, extend, cancel }: {
+  timer: SleepTimer | null
+  start: (c: SleepChoice) => void
+  extend: (minutes: number) => void
+  cancel: () => void
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const last = menuOpen ? loadSleepChoice() : null
+  const close = () => setMenuOpen(false)
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setMenuOpen(!menuOpen)}
+        className={`flex items-center gap-1 p-1.5 sm:p-2 text-xs font-semibold tabular-nums transition ${timer ? 'text-accent' : 'text-text-muted hover:text-text'}`}
+        title="Sleep timer"
+        aria-label={timer ? `Sleep timer: ${timer.choice === 'chapter' ? 'end of chapter' : formatTime(timer.remaining / 1000)}` : 'Sleep timer'}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.3 2a10 10 0 1 0 9.7 12.6A8 8 0 0 1 12.3 2z"/></svg>
+        {timer && <span>{timer.choice === 'chapter' ? 'Ch' : formatTime(timer.remaining / 1000)}</span>}
+      </button>
+      {menuOpen && (
+        <BarMenu label="Sleep timer" onClose={close}>
+          {timer && timer.choice !== 'chapter' && (
+            <>
+              <MenuItem onClick={() => { extend(5); close() }}>+5 minutes</MenuItem>
+              <MenuItem onClick={() => { extend(15); close() }}>+15 minutes</MenuItem>
+            </>
+          )}
+          {timer && <MenuItem onClick={() => { cancel(); close() }}>Turn off timer</MenuItem>}
+          {timer && <div className="my-1 border-t border-border" />}
+          {SLEEP_CHOICES.map(c => (
+            <MenuItem key={c} checked={timer ? timer.choice === c : last === c} onClick={() => { start(c); close() }}>
+              {sleepLabel(c)}
+            </MenuItem>
+          ))}
+        </BarMenu>
+      )}
+    </div>
+  )
+}
+
+/** Popover above a bar button; a click outside closes it. */
+function BarMenu({ label, onClose, children }: { label: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-10" onClick={onClose} />
+      <div role="menu" aria-label={label} className="absolute bottom-full right-0 mb-2 z-20 max-h-72 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg py-1">
+        {children}
+      </div>
+    </>
+  )
+}
+
+function MenuItem({ checked, onClick, children }: { checked?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      role={checked === undefined ? 'menuitem' : 'menuitemradio'}
+      aria-checked={checked}
+      onClick={onClick}
+      className={`block w-full whitespace-nowrap px-4 py-1.5 text-left text-xs tabular-nums transition ${
+        checked ? 'text-accent font-semibold' : 'text-text-muted hover:bg-surface-hover hover:text-text'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
 

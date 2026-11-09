@@ -11,6 +11,7 @@ const POSITION_KEY = 'bp-audio-position'
 const RATE_KEY = 'bp-audio-rate'
 const VOICE_KEY = 'bp-audio-voice'
 const ENGINE_KEY = 'bp-audio-engine'
+const SLEEP_KEY = 'bp-audio-sleep'
 
 // ── Rate ──
 export function loadRate(): number {
@@ -34,6 +35,17 @@ export function loadEngine(): TtsEngine {
 }
 export function saveEngine(e: TtsEngine) {
   try { localStorage.setItem(ENGINE_KEY, e) } catch {}
+}
+
+// ── Sleep timer: last choice, minutes or end of chapter ──
+export function loadSleepChoice(): number | 'chapter' | null {
+  try {
+    const v = localStorage.getItem(SLEEP_KEY)
+    return v === 'chapter' ? v : Number(v) || null
+  } catch { return null }
+}
+export function saveSleepChoice(c: number | 'chapter') {
+  try { localStorage.setItem(SLEEP_KEY, String(c)) } catch {}
 }
 
 // ── History ──
