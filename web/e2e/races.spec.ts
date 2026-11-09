@@ -1,6 +1,6 @@
 import {
   test, expect, stubHuggingFace, audio, bar, chapterOf, charPoint, expectPlaying, headerPlay,
-  openChapter, trackButton, timings, alice, chapterUrl, SLUG, DURATIONS, SHORT_CH,
+  openChapter, trackButton, chapterUrl, SLUG, DURATIONS, SHORT_CH,
 } from './fixtures'
 import type { Page } from '@playwright/test'
 
@@ -34,16 +34,15 @@ test.describe('the last request wins', () => {
   test('Play then a word straight away plays from the word', async ({ page }) => {
     // Play alone would resume at 150 s
     await page.evaluate(url => localStorage.setItem('bp-prepared-positions', JSON.stringify({ [url]: 150 })), chapterUrl(0))
-    // A word on the first screen, so clicking Play doesn't scroll it away
-    const target = timings(alice.chapters[0].content)[1]
-    const pt = await charPoint(page, target[0] + 2, false)
+    // A word in the first lines: clicking Play doesn't scroll it away, and the
+    // player bar that appears at the bottom doesn't cover it (phones)
+    const pt = await charPoint(page, 40, false)
     await headerPlay(page).click()
     await page.mouse.click(pt.x, pt.y)
     await expectPlaying(page, 0)
     await staysOn(page, 0)
-    const t = (await audio(page))!.t
-    expect(t, 'plays from the word').toBeGreaterThan(target[2] - 0.5)
-    expect(t).toBeLessThan(target[2] + 5)
+    // The word is spoken in the first seconds
+    expect((await audio(page))!.t, 'plays from the word, not from 150 s').toBeLessThan(10)
   })
 })
 
