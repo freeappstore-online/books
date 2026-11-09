@@ -93,16 +93,39 @@ Then read it in the app (`pnpm dev`):
 - chapter 1 starts at the first line of the text, with no title page, preface boilerplate or contents,
 - the last chapter ends with the author's last line, with no index or notes unless they are the author's.
 
-### 6. Typecheck and build
+`qa.py` passing doesn't mean the split is right. Books that need options often still pass: a missed
+heading folds two chapters into one, or untitled "Part N" chapters start with the heading text. So check
+the chapter list of every book, not just a few. A quick way is to print each book's titles, its first 80
+and last 80 characters, and any gaps in the chapter numbers.
+
+### 6. Add the cover
 
 ```bash
-pnpm test && pnpm build && du -sh web/dist
+cd scripts/catalog && python3 covers.py ~/.cache/books-covers north-and-south   # needs Pillow
 ```
 
-### 7. Commit and push
+`covers.py` downloads the Gutenberg cover (the full-size scan if there is one, otherwise the 200 px
+thumbnail), writes `web/public/covers/<slug>.webp` and regenerates `web/src/data/covers.ts`. A book
+with no cover shows its `coverGradient` instead.
 
-Commit the `fetch.py`, `catalog.ts` and `web/public/catalog/<slug>.json` changes, referencing the issue
-(`Refs #N`). A push to `main` deploys. Add books in batches rather than one commit per book.
+Look at every new cover. Many Gutenberg books only have a *generated placeholder*: the title in a white
+band over coloured geometric shapes, with a "Project Gutenberg" label. Add those slugs to `SKIP` in
+`covers.py` with the `GENERATED` reason, then run the script again for them. That deletes their `.webp`
+and drops them from `covers.ts`.
+
+### 7. Typecheck and build
+
+```bash
+pnpm --filter @freebooksapp/web exec tsc -b && pnpm build && du -sh web/dist
+```
+
+(The root `pnpm test` script filters on `@books/web`, which matches no package, so it checks nothing.)
+
+### 8. Commit and push
+
+Commit the `fetch.py`, `covers.py`, `catalog.ts`, `covers.ts`, `web/public/catalog/<slug>.json` and
+`web/public/covers/<slug>.webp` changes, referencing the issue (`Refs #N`). A push to `main` deploys.
+Add books in batches rather than one commit per book.
 
 ## Narration
 
