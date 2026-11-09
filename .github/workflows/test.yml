@@ -1,0 +1,80 @@
+name: Tests
+
+# Typecheck, unit tests (Vitest) and end-to-end tests (Playwright) on every
+# push and pull request (books#16). The e2e projects run as parallel jobs:
+# chromium, firefox, webkit (iPhone 13) and edge (offline and app-update edge
+# cases, Chromium with the service worker). How to run them: "Tests" in README.md.
+#
+# The deploy (deploy.yml) is the platform's pinned reusable workflow and runs
+# on its own: a job can't wait for a job in another workflow file, and
+# deploy.yml must stay as `fas publish` generates it. A red run here is the
+# signal to fix or revert.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Typecheck and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm exec tsc -b
+      - name: Unit tests
+        run: pnpm test:unit
+
+  e2e:
+    name: E2E (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { project: chromium, browser: chromium }
+          - { project: firefox, browser: firefox }
+          - { project: webkit, browser: webkit }
+          - { project: edge, browser: chromium }
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install ${{ matrix.browser }}
+        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+      - name: End-to-end tests
+        run: pnpm test:e2e --project=${{ matrix.project }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-${{ matrix.project }}
+          path: web/test-results/
+          retention-days: 7

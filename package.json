@@ -14,7 +14,7 @@
     "dev": "pnpm --filter @freebooksapp/web dev",
     "build": "pnpm --filter @freebooksapp/web build",
     "preview": "pnpm --filter @freebooksapp/web preview",
-    "test": "pnpm --filter @books/web exec tsc -b"
+    "test": "pnpm --filter @freebooksapp/web test"
   },
   "repository": {
     "type": "git",
