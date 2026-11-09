@@ -3,17 +3,15 @@ import { Link } from 'react-router-dom'
 import { NavBar } from '../components/NavBar'
 import { ReadingSettings } from '../components/ReadingSettings'
 import { ListeningSettings } from '../components/ListeningSettings'
-import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { getTheme, type Theme } from '../hooks/useTheme'
 import { formatBytes, savedBytes, useOfflineBooks } from '../hooks/offlineBooks'
 
 export function SettingsPage() {
-  const player = useAudioPlayer()
   const [currentTheme, setCurrentTheme] = useState<Theme>(getTheme)
   const saved = Object.values(useOfflineBooks().saved)
 
   return (
-    <div className={`min-h-dvh bg-page text-text ${player.book ? 'pb-20' : ''}`}>
+    <div className="min-h-dvh bg-page text-text">
       <NavBar title="Settings" />
 
       <main className="max-w-2xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-4 md:space-y-6">

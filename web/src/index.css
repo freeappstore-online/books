@@ -157,6 +157,9 @@
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* viewport-fit=cover: keep clear of the status bar and notch (installed iPhone app, landscape),
+       and of the fixed player, whose height AudioPlayer keeps in --player-h */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--player-h, 0px) env(safe-area-inset-left);
   }
 
   /* The SDK runtime's own update notice (an unstyled panel after the app);

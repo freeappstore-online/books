@@ -25,10 +25,9 @@ const iosSafariTab = (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.p
 
 /** My books: what is saved on this device and what is being read or listened to. */
 export function LibraryPage() {
-  const player = useAudioPlayer()
 
   return (
-    <div className={`min-h-dvh bg-page text-text ${player.book ? 'pb-20' : ''}`}>
+    <div className="min-h-dvh bg-page text-text">
       <NavBar title="My books" />
 
       <main className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">

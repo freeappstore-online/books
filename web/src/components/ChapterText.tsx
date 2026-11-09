@@ -2,9 +2,9 @@ import { Fragment, memo, useEffect, useMemo, useRef, useState, type CSSPropertie
 import { useReadAlong } from '../hooks/useAudioPlayer'
 import type { CharRange } from '../hooks/readAlong'
 
-// Room kept clear above and below the spoken line (the player bar is fixed at the bottom)
+// Room kept clear above and below the spoken line, the latter above the fixed player bar
 const TOP_MARGIN = 48
-const BOTTOM_MARGIN = 140
+const BOTTOM_MARGIN = 40
 
 /** Bottom of the page's sticky top bar ([data-reader-top]), which covers the text under it. */
 export function topInset(): number {
@@ -169,7 +169,8 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
       ?? containerRef.current?.querySelector('[data-readalong="sentence"]')
     if (!el) return
     const rect = el.getBoundingClientRect()
-    if (rect.top >= topInset() + TOP_MARGIN && rect.bottom <= window.innerHeight - BOTTOM_MARGIN) return
+    const player = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--player-h')) || 0
+    if (rect.top >= topInset() + TOP_MARGIN && rect.bottom <= window.innerHeight - player - BOTTOM_MARGIN) return
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
   }, [following, targetStart])
@@ -196,7 +197,7 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
           data-shortcut="follow"
           aria-keyshortcuts="F"
           title="Follow audio (F)"
-          className="fixed right-4 bottom-24 z-40 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-btn-text shadow-lg hover:bg-accent-hover transition"
+          className="fixed right-4 bottom-[calc(var(--player-h,0px)+1rem)] z-40 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-btn-text shadow-lg hover:bg-accent-hover transition"
         >
           Follow audio
         </button>

@@ -68,7 +68,12 @@ export function AudioPlayer() {
   return (
     // No backdrop-filter here: it would make the bar the containing block of the menus'
     // fixed click-catcher, which then covers only the bar and taps outside don't close them
-    <div role="region" aria-label="Player" className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface">
+    <div
+      ref={trackHeight}
+      role="region"
+      aria-label="Player"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+    >
       {/* Expanded panel */}
       {expanded && (
         <div id="player-panel" className="border-b border-border px-4 py-3 max-w-4xl mx-auto max-h-64 overflow-y-auto">
@@ -226,6 +231,17 @@ export function AudioPlayer() {
       </div>
     </div>
   )
+}
+
+/** Publish the bar's height as --player-h: pages keep their end, and read-along its line, above it. */
+function trackHeight(el: HTMLDivElement) {
+  const root = document.documentElement
+  const observer = new ResizeObserver(() => root.style.setProperty('--player-h', `${el.offsetHeight}px`))
+  observer.observe(el)
+  return () => {
+    observer.disconnect()
+    root.style.removeProperty('--player-h')
+  }
 }
 
 /** Speeds a tap cycles through; long-press or right-click lists every rate. */

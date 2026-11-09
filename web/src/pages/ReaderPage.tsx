@@ -360,7 +360,7 @@ export function ReaderPage() {
   }
 
   return (
-    <div className={`min-h-dvh bg-page text-text ${player.book ? 'pb-20' : ''}`}>
+    <div className="min-h-dvh bg-page text-text">
       {/* Stays on screen while reading, so bookmarking, search and the chapter list are always at hand */}
       <div data-reader-top="" className="sticky top-0 z-30 bg-page">
         <NavBar
