@@ -55,7 +55,7 @@ const Block = memo(function Block({ text, s0, s1, w0, w1, marks }: {
     }
     // Marks wrap the read-along, so the spoken word still shows inside a highlight
     for (const m of marks) {
-      if (a >= m.start && b <= m.end) piece = <mark data-mark={m.id} className={`text-inherit ${m.className}`}>{piece}</mark>
+      if (a >= m.start && b <= m.end) piece = <mark data-mark={m.id} className={`text-text ${m.className}`}>{piece}</mark>
     }
     pieces.push(<Fragment key={a}>{piece}</Fragment>)
   }

@@ -87,7 +87,7 @@ export function BookSearch({ chapters, onJump, onClose }: Props) {
                   <button onClick={() => go(i)} className="w-full text-left px-2 py-2 rounded hover:bg-surface-hover transition">
                     <span className="block text-xs text-text-dim truncate">{chapters[hit.chapterIdx].title}</span>
                     <span className="block text-sm text-text-muted">
-                      {s.before}<mark className="bg-warning/40 text-inherit rounded-sm">{s.match}</mark>{s.after}
+                      {s.before}<mark className="bg-warning/40 text-text rounded-sm">{s.match}</mark>{s.after}
                     </span>
                   </button>
                 </li>
