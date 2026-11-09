@@ -10,7 +10,8 @@ interface Props {
 const sizes = {
   sm: { w: 'w-28', h: 'h-40', title: 'text-xs', author: 'text-[10px]' },
   md: { w: 'w-36', h: 'h-52', title: 'text-sm', author: 'text-xs' },
-  lg: { w: 'w-48', h: 'h-68', title: 'text-base', author: 'text-sm' },
+  // Grid covers: shrink to the column on phones (a fixed 12rem overlapped the next one)
+  lg: { w: 'w-full max-w-48', h: 'aspect-[12/17]', title: 'text-base', author: 'text-sm' },
 }
 
 /** The book's self-hosted Gutenberg cover, or null if it has none. The service worker
