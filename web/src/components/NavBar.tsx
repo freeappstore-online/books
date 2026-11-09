@@ -21,7 +21,8 @@ export function NavBar({ title, subtitle, actions }: Props) {
       {/* Phones and tablets: logo, title and nav, then the actions on a row of their own */}
       <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-3 gap-y-2">
         {/* Left: logo/back + nav links */}
-        <div className="flex flex-1 items-center gap-3 md:gap-5 min-w-0">
+        {/* Only a title may shrink (it truncates): without one the logo would slide under the Offline badge */}
+        <div className={`flex flex-1 items-center gap-3 md:gap-5 ${title ? 'min-w-0' : 'min-w-fit'}`}>
           {/* Logo — always visible, always links home */}
           <Link to="/" className="text-lg md:text-xl font-display hover:text-accent transition shrink-0">
             Books
