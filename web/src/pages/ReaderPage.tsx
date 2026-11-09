@@ -6,6 +6,7 @@ import { LibraryButton } from '../components/LibraryButton'
 import { SmartPlayButtons } from '../components/SmartPlayButtons'
 import { SaveOfflineButton } from '../components/SaveOfflineButton'
 import { fetchSavedOr } from '../hooks/offlineBooks'
+import { ChapterText } from '../components/ChapterText'
 import { getReaderFontSize } from '../hooks/usePreferences'
 import { saveProgress, getProgress } from '../hooks/useReadingProgress'
 import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
@@ -139,7 +140,6 @@ export function ReaderPage() {
 
   const currentChapter = chapters.find(c => c.id === activeChapter)
   const visibleChapterIdx = chapters.findIndex(c => c.id === activeChapter)
-  const showHighlight = isThisBookPlaying && playingChapterIdx === visibleChapterIdx && player.playing
   const libraryEntry = useMemo(
     () => slug ? getLibrary().find(entry => entry.slug === slug) : undefined,
     [slug, libraryVersion],
@@ -177,25 +177,13 @@ export function ReaderPage() {
       offset += (node.textContent?.length ?? 0)
     }
 
-    // Listening from a clicked word needs the device voice: AI narration can't start mid-text
+    // AI narration playing this chapter jumps to the clicked word when it has timings
+    if (player.engine === 'kokoro' && player.playing && playingChapterIdx === visibleChapterIdx
+      && player.seekToChar(visibleChapterIdx, offset)) return
+    // Otherwise listening from a clicked word needs the device voice: AI narration can't start mid-text
     if (player.engine !== 'browser') player.setEngine('browser')
     player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx, offset)
-  }, [slug, currentChapter, narrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx])
-
-  const highlightedContent = useMemo(() => {
-    if (!currentChapter) return null
-    if (!showHighlight || !player.wordHighlight) return null
-
-    const { charIndex, charLength } = player.wordHighlight
-    const text = currentChapter.content
-    if (charIndex >= text.length) return null
-
-    return {
-      before: text.slice(0, charIndex),
-      word: text.slice(charIndex, charIndex + charLength),
-      after: text.slice(charIndex + charLength),
-    }
-  }, [currentChapter, showHighlight, player.wordHighlight])
+  }, [slug, currentChapter, narrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx, playingChapterIdx])
 
   if (loading) {
     return <div className="min-h-dvh bg-page text-text flex items-center justify-center">Loading...</div>
@@ -343,29 +331,15 @@ export function ReaderPage() {
           {currentChapter ? (
             <article ref={articleRef}>
               <h2 className="font-display mb-4 md:mb-6" style={{ fontSize: `${Math.round(fontSize * 1.35)}px` }}>{currentChapter.title}</h2>
-              <div
+              <ChapterText
+                content={currentChapter.content}
+                chapterIdx={visibleChapterIdx}
+                active={isThisBookPlaying && player.playing}
                 className={`${themeStyle.muted} whitespace-pre-wrap ${narrated ? 'cursor-pointer' : ''}`}
                 style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
                 onClick={handleTextClick}
                 title={narrated ? 'Click to start listening from here' : undefined}
-              >
-                {highlightedContent ? (
-                  <>
-                    {highlightedContent.before}
-                    <mark ref={el => {
-                      if (!el) return
-                      // Throttle: only scroll if mark is out of viewport
-                      const rect = el.getBoundingClientRect()
-                      if (rect.top < 0 || rect.bottom > window.innerHeight) {
-                        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                      }
-                    }} className="bg-accent/30 text-text rounded px-0.5">{highlightedContent.word}</mark>
-                    {highlightedContent.after}
-                  </>
-                ) : (
-                  currentChapter.content
-                )}
-              </div>
+              />
 
               <div className="flex justify-between mt-8 md:mt-12 pt-4 md:pt-6 border-t border-border">
                 {(() => {

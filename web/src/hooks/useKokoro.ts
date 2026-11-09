@@ -385,6 +385,8 @@ export interface KokoroPlayback {
   setRate?: (rate: number) => void
   /** 0..1, for the sleep timer's fade; absent where it isn't supported */
   setVolume?: (volume: number) => void
+  /** The shared element, when a prepared chapter plays: its currentTime drives read-along. */
+  audio?: HTMLAudioElement
 }
 
 export async function kokoroStreamPlay(
@@ -465,6 +467,7 @@ export async function kokoroStreamPlay(
     audio.volume = 1
     audio.play().catch(err => { if (mine() && !stopped) onError(err) })
     return {
+      audio,
       stop() {
         stopped = true
         audio.removeEventListener('timeupdate', onTime)

@@ -57,3 +57,8 @@ export function preparedCount(m: PreparedManifest, slug: string, voice: string):
 export function preparedUrl(slug: string, chapterIdx: number, voice: string): string {
   return `${BASE}/${voice}/${slug}/${chapterIdx}.m4a`
 }
+
+/** Sentence timings for read-along: {"v":1,"segments":[[charStart,charEnd,startSec,endSec],...]} */
+export function preparedTimingsUrl(slug: string, chapterIdx: number, voice: string): string {
+  return `${BASE}/${voice}/${slug}/${chapterIdx}.timings.json`
+}

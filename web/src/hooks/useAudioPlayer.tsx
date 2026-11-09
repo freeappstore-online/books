@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import {
   kokoroStreamPlay,
   getSavedKokoroVoice,
@@ -19,6 +19,10 @@ import {
   type HistoryEntry,
 } from './audioStorage'
 import { getTtsCode } from './useLanguage'
+import {
+  loadTimings, positionFromTimings, positionByProportion, sentenceRanges, timeAtChar,
+  type CharRange, type ReadAlongPosition, type TimingSegment,
+} from './readAlong'
 
 export const RATES = [0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3]
 
@@ -49,11 +53,6 @@ export interface AudioBook {
   chapters: AudioChapter[]
 }
 
-interface WordHighlight {
-  charIndex: number
-  charLength: number
-}
-
 interface AudioPlayerState {
   book: AudioBook | null
   playing: boolean
@@ -61,7 +60,6 @@ interface AudioPlayerState {
   chapterIdx: number
   /** Char offset reached in the chapter by device speech (to the start of the sentence chunk) */
   chapterOffset: number
-  wordHighlight: WordHighlight | null
   rate: number
   voiceName: string
   voices: SpeechSynthesisVoice[]
@@ -94,6 +92,11 @@ interface AudioPlayerState {
   setVoiceName: (name: string) => void
   setEngine: (engine: TtsEngine) => void
   setKokoroVoice: (voice: string) => void
+  /** Read-along position, outside React state so it can change many times a second. */
+  subscribeReadAlong: (listener: () => void) => () => void
+  getReadAlong: () => ReadAlongPosition | null
+  /** Seek the playing AI narration of chapter `chapterIdx` to char `offset`; false when it can't. */
+  seekToChar: (chapterIdx: number, offset: number) => boolean
 }
 
 const AudioPlayerContext = createContext<AudioPlayerState | null>(null)
@@ -103,6 +106,10 @@ const AudioPlayerContext = createContext<AudioPlayerState | null>(null)
 const CHUNK_CHARS_AT_1X = 160
 
 /** Split `text` from `from` into utterances, each with its start offset in `text`. */
+function sameRange(a: CharRange | null, b: CharRange | null) {
+  return a === b || (!!a && !!b && a[0] === b[0] && a[1] === b[1])
+}
+
 function chunkText(text: string, from: number, rate: number): { start: number; text: string }[] {
   const max = Math.round(CHUNK_CHARS_AT_1X * Math.min(Math.max(rate, 0.5), 3))
   const chunks: { start: number; text: string }[] = []
@@ -132,7 +139,6 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [muted, setMuted] = useState(false)
   const [chapterIdx, setChapterIdx] = useState(0)
   const [chapterOffset, setChapterOffset] = useState(0)
-  const [wordHighlight, setWordHighlight] = useState<WordHighlight | null>(null)
   const [rate, setRateState] = useState(loadRate)
   const [voiceName, setVoiceNameState] = useState(loadVoice)
   const [engine, setEngineState] = useState<TtsEngine>(loadEngine)
@@ -168,6 +174,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   // Chrome can drop events of an utterance nothing references any more
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const mutedRef = useRef(false)
+  // The prepared chapter playing, for read-along and seeking (timings undefined while loading)
+  const preparedTrackRef = useRef<{ audio: HTMLAudioElement; idx: number; text: string; timings?: TimingSegment[] | null } | null>(null)
   bookRef.current = book
   chapterIdxRef.current = chapterIdx
   rateRef.current = rate
@@ -199,6 +207,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => subscribeKokoroRuntimeInfo(setKokoroRuntime), [])
 
+  const readAlongRef = useRef<ReadAlongPosition | null>(null)
+  const readAlongListenersRef = useRef(new Set<() => void>())
+  const setReadAlong = useCallback((pos: ReadAlongPosition | null) => {
+    const prev = readAlongRef.current
+    if (prev === pos || (prev && pos && prev.chapterIdx === pos.chapterIdx
+      && sameRange(prev.sentence, pos.sentence) && sameRange(prev.word, pos.word))) return
+    readAlongRef.current = pos
+    for (const listener of readAlongListenersRef.current) listener()
+  }, [])
+  const subscribeReadAlong = useCallback((listener: () => void) => {
+    readAlongListenersRef.current.add(listener)
+    return () => { readAlongListenersRef.current.delete(listener) }
+  }, [])
+  const getReadAlong = useCallback(() => readAlongRef.current, [])
+
   // Start/stop silent audio keepalive when playing state changes
   useEffect(() => {
     if (playing) {
@@ -226,9 +249,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     mutedRef.current = false
     setMuted(false)
     setKokoroLoading(false)
-    setWordHighlight(null)
+    preparedTrackRef.current = null
+    setReadAlong(null)
     return gen
-  }, [])
+  }, [setReadAlong])
 
   /** Mark chapter `idx` of `b` as playing from `offset`. */
   const enterChapter = useCallback((b: AudioBook, idx: number, offset: number) => {
@@ -272,9 +296,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       startPlayback(idx + 1, 0)
     } else {
       setPlaying(false)
-      setWordHighlight(null)
+      setReadAlong(null)
     }
-  }, [startPlayback, halt])
+  }, [startPlayback, halt, setReadAlong])
 
   const speakBrowser = useCallback((idx: number, offset: number) => {
     const b = bookRef.current
@@ -300,32 +324,60 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       const voice = speechSynthesis.getVoices().find(v => v.name === voiceNameRef.current)
       if (voice) utterance.voice = voice
 
+      // The chunk is highlighted as the sentence: voices without word boundaries (Chrome's Google ones) still show where they are
+      const sentence: CharRange = [chunk.start, chunk.start + chunk.text.trimEnd().length]
       utterance.onstart = () => {
         if (gen !== genRef.current) return
         currentCharOffsetRef.current = chunk.start
         setChapterOffset(chunk.start)
         savePosition(b!.slug, idx, chunk.start)
+        setReadAlong({ chapterIdx: idx, sentence, word: null })
       }
       utterance.onboundary = (e) => {
         if (gen !== genRef.current || e.name !== 'word') return
         const charIndex = chunk.start + e.charIndex
         const charLength = e.charLength || (/^\S+/.exec(chunk.text.slice(e.charIndex))?.[0].length ?? 0)
         currentCharOffsetRef.current = charIndex
-        setWordHighlight({ charIndex, charLength })
+        setReadAlong({ chapterIdx: idx, sentence, word: charLength > 0 ? [charIndex, charIndex + charLength] : null })
       }
       utterance.onend = speakNext
       utterance.onerror = (e) => {
         if (gen !== genRef.current) return
         if (e.error === 'interrupted' || e.error === 'canceled') return
         setPlaying(false)
-        setWordHighlight(null)
+        setReadAlong(null)
       }
       utteranceRef.current = utterance
       speechSynthesis.speak(utterance)
     }
     speakNext()
-  }, [halt, enterChapter, finishChapter])
+  }, [halt, enterChapter, finishChapter, setReadAlong])
   speakBrowserRef.current = speakBrowser
+
+  /** Follow the shared audio element of a prepared chapter until playback is halted. */
+  const followPrepared = useCallback((gen: number, b: AudioBook, idx: number, audio: HTMLAudioElement, voice: string) => {
+    const text = b.chapters[idx].content
+    const track: NonNullable<typeof preparedTrackRef.current> = { audio, idx, text }
+    preparedTrackRef.current = track
+    loadTimings(b.slug, idx, voice).then(t => { track.timings = t })
+    let sentences: CharRange[] | null = null
+    // currentTime has no change event finer than timeupdate (4 Hz): read it each frame.
+    // setReadAlong only notifies when the word or sentence changes.
+    const tick = () => {
+      if (gen !== genRef.current || audio.ended) return
+      if (audio.readyState > 0 && !audio.seeking && track.timings !== undefined) {
+        const t = audio.currentTime
+        if (track.timings) {
+          setReadAlong({ chapterIdx: idx, ...positionFromTimings(text, track.timings, t) })
+        } else {
+          sentences ??= sentenceRanges(text)
+          setReadAlong({ chapterIdx: idx, sentence: positionByProportion(text, sentences, t, audio.duration), word: null })
+        }
+      }
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [setReadAlong])
 
   const speakKokoro = useCallback(async (idx: number) => {
     const b = bookRef.current
@@ -380,6 +432,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       }
       kokoroPlayerRef.current = player
       player.setVolume?.(volumeRef.current)
+      if (player.audio) followPrepared(gen, b, idx, player.audio, kokoroVoice)
       // Muted while it was loading
       if (mutedRef.current) player.mute()
     } catch (err) {
@@ -388,7 +441,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       setKokoroLoading(false)
       setPlaying(false)
     }
-  }, [kokoroVoice, halt, enterChapter, finishChapter, speakBrowser])
+  }, [kokoroVoice, halt, enterChapter, finishChapter, speakBrowser, followPrepared])
   speakKokoroRef.current = speakKokoro
 
   const updateHistory = useCallback((b: AudioBook, idx: number) => {
@@ -434,6 +487,18 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       setMuted(true)
     }
   }, [playing, halt, speakBrowser])
+
+  const seekToChar = useCallback((idx: number, offset: number) => {
+    const track = preparedTrackRef.current
+    if (!track?.timings || track.idx !== idx || track.audio.readyState === 0) return false
+    track.audio.currentTime = timeAtChar(track.text, track.timings, offset)
+    if (mutedRef.current) {
+      kokoroPlayerRef.current?.unmute()
+      mutedRef.current = false
+      setMuted(false)
+    }
+    return true
+  }, [])
 
   const loadAndPlay = useCallback((newBook: AudioBook, startChapter?: number, charOffset?: number) => {
     // Books without AI narration are reading-only (books#19)
@@ -670,12 +735,13 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   return (
     <AudioPlayerContext.Provider value={{
-      book, playing, muted, chapterIdx, chapterOffset, wordHighlight, rate, voiceName, voices, history,
+      book, playing, muted, chapterIdx, chapterOffset, rate, voiceName, voices, history,
       engine, kokoroLoading, kokoroGenerated, kokoroTotal, kokoroVoice, kokoroRuntime,
       loadAndPlay, play, pause, stop, toggleMute,
       setChapter: setChapterAndPlay, nextChapter, prevChapter, skip, seekAi,
       sleepTimer, startSleepTimer, extendSleepTimer, cancelSleepTimer,
       setRate, setVoiceName, setEngine, setKokoroVoice: setKokoroVoiceVal,
+      subscribeReadAlong, getReadAlong, seekToChar,
     }}>
       {children}
     </AudioPlayerContext.Provider>
@@ -686,4 +752,10 @@ export function useAudioPlayer() {
   const ctx = useContext(AudioPlayerContext)
   if (!ctx) throw new Error('useAudioPlayer must be used within AudioPlayerProvider')
   return ctx
+}
+
+/** The read-along position; re-renders only the calling component when it moves. */
+export function useReadAlong(): ReadAlongPosition | null {
+  const { subscribeReadAlong, getReadAlong } = useAudioPlayer()
+  return useSyncExternalStore(subscribeReadAlong, getReadAlong)
 }
