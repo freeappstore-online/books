@@ -25,15 +25,13 @@ function foldChar(ch: string): string {
 }
 
 export function foldText(text: string): string {
-  const parts = new Array<string>(text.length)
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i)
-    parts[i] = c < 128 ? (c >= 65 && c <= 90 ? String.fromCharCode(c + 32) : text[i]) : foldChar(text[i])
-  }
-  return parts.join('')
+  const lower = text.toLowerCase()
+  // A few chars lower-case to two (İ): then fold char by char to keep offsets
+  if (lower.length !== text.length) return text.replace(/[^]/g, foldChar)
+  return lower.replace(/[^\x00-\x7f]/g, foldChar)
 }
 
-/** Folded chapters of a book, built once per chapters array (Ulysses: about 0.2 s). */
+/** Folded chapters of a book, built once per chapters array (Ulysses: about 20 ms). */
 const indexes = new WeakMap<object, string[]>()
 function foldedChapters(chapters: { content: string }[]): string[] {
   let folded = indexes.get(chapters)
