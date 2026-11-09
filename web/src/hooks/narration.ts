@@ -80,13 +80,15 @@ export function useNarrationPosition(): NarrationPosition {
 
 /** Seconds reached in chapter `url`: live while it plays, else where it was stopped. */
 export function getNarrationTime(url: string): number {
-  if (playingUrl === url) return audio!.currentTime
+  // Before metadata currentTime is 0, not where the chapter will resume
+  if (playingUrl === url && audio!.readyState > 0) return audio!.currentTime
   return loadPositions()[url] ?? 0
 }
 
 /** Move chapter `url` to `seconds`: seeks it while it plays, else it resumes from there. */
 export function seekNarration(url: string, seconds: number, duration: number) {
-  const at = Math.min(Math.max(0, seconds), duration)
+  // Not past the last second: resuming there still plays to the end and moves on
+  const at = Math.min(Math.max(0, seconds), Math.max(0, duration - 0.5))
   if (playingUrl === url && audio!.readyState > 0) {
     audio!.currentTime = at
     return
@@ -123,20 +125,26 @@ export interface Narration {
 export interface NarrationCallbacks {
   onPlaying: () => void
   onEnded: () => void
+  /** Paused by the browser or the system, not by stop() */
+  onPaused: () => void
   onError: (err: unknown) => void
 }
 
 /** Play a narrated chapter from where it was stopped. */
 export async function playNarration(slug: string, chapterIdx: number, rate: number, cb: NarrationCallbacks): Promise<Narration> {
   const url = preparedUrl(slug, chapterIdx)
-  // A book saved for offline plays from this device (books#7)
-  const saved = await savedResponse(url)
-  const src = saved ? URL.createObjectURL(await saved.blob()) : url
-
   const a = audio!
+  // Claim the element before awaiting: a later request must win even if this one's awaits finish last
   const me = ++owner
   const mine = () => owner === me
+  // A book saved for offline plays from this device (books#7)
+  const saved = await savedResponse(url)
+  const blob = saved ? await saved.blob() : null
+  if (!mine()) return { audio: a, stop() {}, setRate() {}, setVolume() {} }
+  const src = blob ? URL.createObjectURL(blob) : url
+
   let stopped = false
+  let started = false
   let lastSaved = 0
   a.pause()
   playingUrl = url
@@ -146,9 +154,9 @@ export async function playNarration(slug: string, chapterIdx: number, rate: numb
     // Seeking before metadata is ignored by iOS Safari
     if (!mine()) return
     const at = loadPositions()[url] ?? 0
-    if (at > 0 && at < a.duration - 1) a.currentTime = at
+    if (at > 0) a.currentTime = Math.min(at, Math.max(0, a.duration - 0.5))
   }, { once: true })
-  a.addEventListener('playing', () => { if (mine()) cb.onPlaying() }, { once: true })
+  a.addEventListener('playing', () => { if (mine()) { started = true; cb.onPlaying() } }, { once: true })
   const onTime = () => {
     if (!mine() || Math.abs(a.currentTime - lastSaved) < 5) return
     lastSaved = a.currentTime
@@ -156,7 +164,10 @@ export async function playNarration(slug: string, chapterIdx: number, rate: numb
   }
   const onEnded = () => { if (!mine()) return; savePosition(url, null); if (!stopped) cb.onEnded() }
   const onErr = () => { if (mine() && !stopped) cb.onError(a.error) }
+  // Our own pause() calls happen before 'playing' or after stop(); 'pause' also precedes 'ended'
+  const onPause = () => { if (mine() && started && !stopped && !a.ended) cb.onPaused() }
   a.addEventListener('timeupdate', onTime)
+  a.addEventListener('pause', onPause)
   a.addEventListener('ended', onEnded)
   a.addEventListener('error', onErr)
   a.playbackRate = rate
@@ -171,6 +182,7 @@ export async function playNarration(slug: string, chapterIdx: number, rate: numb
       a.removeEventListener('timeupdate', onTime)
       a.removeEventListener('ended', onEnded)
       a.removeEventListener('error', onErr)
+      a.removeEventListener('pause', onPause)
       if (!mine()) return
       // Before metadata currentTime is 0: keep the saved position
       if (!a.ended && a.readyState > 0) savePosition(url, a.currentTime)

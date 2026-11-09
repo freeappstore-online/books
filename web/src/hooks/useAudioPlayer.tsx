@@ -159,23 +159,34 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   // startPlayback and finishChapter call each other
   const finishChapterRef = useRef<(idx: number) => void>(() => {})
 
-  /** Play chapter `idx` of the current book, from where it was stopped or from the word at `charOffset`. */
-  const startPlayback = useCallback(async (idx: number, charOffset?: number) => {
+  /**
+   * Play chapter `idx` of the current book, from where it was stopped or from
+   * the word at `charOffset`. Chapters without narration are passed over in
+   * the direction of travel; when none is left that way, nothing changes.
+   */
+  const startPlayback = useCallback(async (start: number, charOffset?: number, dir: 1 | -1 = 1) => {
     const b = bookRef.current
-    if (!b || idx < 0 || idx >= b.chapters.length) return
+    if (!b || start < 0 || start >= b.chapters.length) return
     const gen = halt()
-    setChapterIdx(idx)
-    chapterIdxRef.current = idx
-    setPlaying(true)
-    savePosition(b.slug, idx)
     // Synchronously, while this is still the user's click (iOS)
     primeNarration()
+    setPlaying(true)
     setLoading(true)
 
-    const seconds = chapterSeconds(await loadPreparedManifest(), b.slug, idx)
+    const manifest = await loadPreparedManifest()
     if (gen !== genRef.current) return
-    // A chapter without narration is skipped
-    if (seconds === null) { finishChapterRef.current(idx); return }
+    let idx = start
+    while (idx >= 0 && idx < b.chapters.length && chapterSeconds(manifest, b.slug, idx) === null) idx += dir
+    if (idx < 0 || idx >= b.chapters.length) {
+      halt()
+      setPlaying(false)
+      return
+    }
+    if (idx !== start) charOffset = undefined
+    const seconds = chapterSeconds(manifest, b.slug, idx)!
+    setChapterIdx(idx)
+    chapterIdxRef.current = idx
+    savePosition(b.slug, idx)
     if (charOffset !== undefined) {
       const text = b.chapters[idx].content
       const timings = await loadTimings(b.slug, idx)
@@ -192,6 +203,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       const narration = await playNarration(b.slug, idx, rateRef.current, {
         onPlaying: () => { if (gen === genRef.current) setLoading(false) },
         onEnded: () => { if (gen === genRef.current) finishChapterRef.current(idx) },
+        // Headphones unplugged, a call, another app: the browser paused it
+        onPaused: () => { if (gen === genRef.current) { halt(); setPlaying(false) } },
         onError: fail,
       })
       // Halted (pause, another chapter) while loading
@@ -282,11 +295,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     setPlaying(false)
   }, [halt])
 
-  const setChapterAndPlay = useCallback((idx: number) => {
+  const setChapterAndPlay = useCallback((idx: number, dir: 1 | -1 = 1) => {
     const b = bookRef.current
     if (!b || idx < 0 || idx >= b.chapters.length) return
     if (playing) {
-      startPlayback(idx)
+      startPlayback(idx, undefined, dir)
       return
     }
     setChapterIdx(idx)
@@ -299,7 +312,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   }, [setChapterAndPlay])
 
   const prevChapter = useCallback(() => {
-    setChapterAndPlay(chapterIdxRef.current - 1)
+    setChapterAndPlay(chapterIdxRef.current - 1, -1)
   }, [setChapterAndPlay])
 
   /** The current chapter's audio URL and length in seconds, when it is narrated. */
@@ -403,7 +416,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const track = (delta: number) => {
       const b = bookRef.current
       const idx = chapterIdxRef.current + delta
-      if (b && idx >= 0 && idx < b.chapters.length) mediaActionsRef.current.startPlayback(idx)
+      if (b && idx >= 0 && idx < b.chapters.length) mediaActionsRef.current.startPlayback(idx, undefined, delta < 0 ? -1 : 1)
     }
     ms.setActionHandler('play', () => mediaActionsRef.current.play())
     ms.setActionHandler('pause', () => mediaActionsRef.current.pause())
