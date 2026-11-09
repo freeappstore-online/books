@@ -71,6 +71,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install ${{ matrix.browser }}
         run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+      # Firefox on Linux plays no audio (the clock never advances) without a sound server
+      - name: Audio output for Firefox
+        if: matrix.browser == 'firefox'
+        run: |
+          sudo apt-get install -y -qq pulseaudio > /dev/null
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=null
+          pactl set-default-sink null
       - name: End-to-end tests
         run: pnpm test:e2e --project=${{ matrix.project }}
       - uses: actions/upload-artifact@v4
