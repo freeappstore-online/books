@@ -5,7 +5,8 @@ import { BookCover } from '../components/BookCover'
 import { NavBar } from '../components/NavBar'
 import { getAllProgress, getProgressPercent } from '../hooks/useReadingProgress'
 import { getLibrary, LIBRARY_CHANGED_EVENT, type LibraryBook } from '../hooks/useLibrary'
-import { isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
+import { getSavedKokoroVoice, isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
+import { preparedCount, usePreparedManifest, type PreparedManifest } from '../hooks/preparedAudio'
 
 interface AiBookState {
   inLibrary: boolean
@@ -19,6 +20,7 @@ export function CatalogPage() {
   const [tag, setTag] = useState<string>('')
   const [sort, setSort] = useState<'title' | 'author' | 'year'>('title')
   const [library, setLibrary] = useState<LibraryBook[]>(() => getLibrary())
+  const manifest = usePreparedManifest()
 
   useEffect(() => {
     function handleLibraryChanged() {
@@ -40,9 +42,9 @@ export function CatalogPage() {
   const catalogWithAi = useMemo(() => {
     return CATALOG.map(book => ({
       book,
-      ai: getAiBookState(libraryBySlug.get(book.id)),
+      ai: getAiBookState(libraryBySlug.get(book.id), manifest, book.id),
     }))
-  }, [libraryBySlug])
+  }, [libraryBySlug, manifest])
 
   const filtered = useMemo(() => {
     let books = [...catalogWithAi]
@@ -390,13 +392,13 @@ function AiStatusPills({
   )
 }
 
-function getAiBookState(libraryEntry: LibraryBook | undefined): AiBookState {
-  const readyCount = libraryEntry?.generatedChapters || 0
+function getAiBookState(libraryEntry: LibraryBook | undefined, manifest: PreparedManifest, slug: string): AiBookState {
+  const generatedCount = libraryEntry?.generatedChapters || 0
 
   return {
     inLibrary: Boolean(libraryEntry),
-    generatedCount: readyCount,
-    readyCount,
+    generatedCount,
+    readyCount: Math.max(generatedCount, preparedCount(manifest, slug, getSavedKokoroVoice())),
   }
 }
 

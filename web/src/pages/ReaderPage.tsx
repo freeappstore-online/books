@@ -10,6 +10,7 @@ import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
 import { CATALOG } from '../data/catalog'
 import { getLibrary, LIBRARY_CHANGED_EVENT } from '../hooks/useLibrary'
 import { isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
+import { preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
 
 interface ReaderChapter {
   id: string
@@ -136,7 +137,10 @@ export function ReaderPage() {
     [slug, libraryVersion],
   )
   const bookInLibrary = Boolean(libraryEntry)
-  const readyCount = libraryEntry?.generatedChapters ?? 0
+  const manifest = usePreparedManifest()
+  const preparedChapters = slug ? preparedCount(manifest, slug, player.kokoroVoice) : 0
+  const fullyPrepared = chapters.length > 0 && preparedChapters >= chapters.length
+  const readyCount = Math.max(preparedChapters, libraryEntry?.generatedChapters ?? 0)
   const isDesktop = !isMobileDevice()
   const kokoroReady = useKokoroReady()
 
@@ -230,19 +234,23 @@ export function ReaderPage() {
         </>}
       />
 
-      {isDesktop && chapters.length > 0 && (
+      {(isDesktop || preparedChapters > 0) && chapters.length > 0 && (
         <section className="border-b border-border bg-surface/70">
           <div className="max-w-5xl mx-auto px-4 md:px-6 py-3 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-medium">
-                {readyCount >= chapters.length
+                {fullyPrepared
+                  ? 'AI narration is ready for this book'
+                  : readyCount >= chapters.length
                   ? 'AI voice is fully ready for this book'
                   : readyCount > 0
                     ? `${readyCount}/${chapters.length} chapters have AI voice on this device`
                     : 'No AI chapters on this device yet'}
               </div>
               <p className="mt-1 text-xs text-text-dim max-w-2xl">
-                {readyCount >= chapters.length
+                {fullyPrepared
+                  ? 'Press ✦ AI to listen on any device.'
+                  : readyCount >= chapters.length
                   ? 'Chapters play instantly from this device, even offline.'
                   : 'Add the book to your Library and this desktop generates the AI voice in the background.'}
               </p>

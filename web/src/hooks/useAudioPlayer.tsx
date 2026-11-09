@@ -8,6 +8,7 @@ import {
   subscribeKokoroRuntimeInfo,
   type KokoroRuntimeInfo,
 } from './useKokoro'
+import { isPrepared, loadPreparedManifest } from './preparedAudio'
 import {
   loadRate, saveRate, loadVoice, saveVoice, loadEngine, saveEngine,
   loadHistory, saveHistory, loadPosition, savePosition,
@@ -78,12 +79,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [wordHighlight, setWordHighlight] = useState<WordHighlight | null>(null)
   const [rate, setRateState] = useState(loadRate)
   const [voiceName, setVoiceNameState] = useState(loadVoice)
-  // Force browser engine on mobile — Kokoro's 160MB WASM model crashes mobile tabs
-  const [engine, setEngineState] = useState<TtsEngine>(() => {
-    const saved = loadEngine()
-    if (saved === 'kokoro' && isMobileDevice()) return 'browser'
-    return saved
-  })
+  const [engine, setEngineState] = useState<TtsEngine>(loadEngine)
   const [kokoroVoice, setKokoroVoiceState] = useState(getSavedKokoroVoice)
   const [kokoroRuntime, setKokoroRuntime] = useState<KokoroRuntimeInfo>(getKokoroRuntimeInfo)
   const [kokoroLoading, setKokoroLoading] = useState(false)
@@ -490,9 +486,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const b = bookRef.current
     if (!b || idx < 0 || idx >= b.chapters.length) return
 
-    // Safety: fall back to browser TTS on mobile to prevent crashes
-    if (isMobileDevice()) {
-      console.log('[AudioPlayer] speakKokoro: mobile detected, falling back to browser TTS')
+    // Kokoro's 160MB model crashes mobile tabs: there, only prepared chapters use the AI voice
+    if (isMobileDevice() && !isPrepared(await loadPreparedManifest(), b.slug, idx, kokoroVoice)) {
+      console.log('[AudioPlayer] speakKokoro: mobile and chapter not prepared, falling back to browser TTS')
       speakChapter(idx)
       return
     }
@@ -563,8 +559,6 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   speakKokoroRef.current = speakKokoro
 
   const setEngine = useCallback((e: TtsEngine) => {
-    // Block Kokoro on mobile
-    if (e === 'kokoro' && isMobileDevice()) return
     // Stop current playback
     if (e !== engine) {
       speechSynthesis.cancel()

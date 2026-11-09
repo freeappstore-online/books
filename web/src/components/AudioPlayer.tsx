@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAudioPlayer, RATES } from '../hooks/useAudioPlayer'
 import { KOKORO_VOICES, KOKORO_LANGUAGES, isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
+import { preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
 import { useNavigate } from 'react-router-dom'
 import { CATALOG } from '../data/catalog'
 
@@ -15,8 +16,11 @@ export function AudioPlayer() {
   const [tab, setTab] = useState<'chapters' | 'history' | 'settings'>('chapters')
   const navigate = useNavigate()
   const kokoroReady = useKokoroReady()
+  const manifest = usePreparedManifest()
 
   if (!book) return null
+  const hasPrepared = preparedCount(manifest, book.slug, kokoroVoice) > 0
+  const kokoroUsable = hasPrepared || (kokoroReady && !isMobileDevice())
 
   const chapter = book.chapters[chapterIdx]
   const totalChapters = book.chapters.length
@@ -122,14 +126,14 @@ export function AudioPlayer() {
                     Browser
                   </button>
                   <button
-                    onClick={() => kokoroReady && !isMobileDevice() && setEngine('kokoro')}
-                    disabled={!kokoroReady || isMobileDevice()}
+                    onClick={() => kokoroUsable && setEngine('kokoro')}
+                    disabled={!kokoroUsable}
                     className={`px-3 py-1 text-xs transition ${
                       engine === 'kokoro' ? 'bg-accent text-btn-text font-semibold'
-                      : kokoroReady && !isMobileDevice() ? 'bg-page text-text-muted hover:text-text'
+                      : kokoroUsable ? 'bg-page text-text-muted hover:text-text'
                       : 'bg-page text-text-dim opacity-50 cursor-not-allowed'
                     }`}
-                    title={isMobileDevice() ? 'Kokoro AI not available on mobile' : kokoroReady ? 'Kokoro AI voice' : 'Download model in Account settings first'}
+                    title={hasPrepared ? 'AI narration' : isMobileDevice() ? 'Kokoro AI not available on mobile' : kokoroReady ? 'Kokoro AI voice' : 'Download the model in Settings first'}
                   >
                     Kokoro AI
                   </button>

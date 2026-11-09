@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { hasCachedAudio, cacheKey } from '../hooks/audioCache'
 import { isMobileDevice, useKokoroReady } from '../hooks/useKokoro'
+import { isPrepared, usePreparedManifest } from '../hooks/preparedAudio'
 
 interface Props {
   slug: string
@@ -22,8 +23,9 @@ export function SmartPlayButtons({ slug, bookTitle, bookAuthor, chapters, active
   const [checking, setChecking] = useState(true)
   const isMobile = isMobileDevice()
   const kokoroReady = useKokoroReady()
-  const aiReady = localAiReady
-  const kokoroAvailable = !isMobile && (kokoroReady || aiReady)
+  const prepared = isPrepared(usePreparedManifest(), slug, activeChapterIdx, player.kokoroVoice)
+  const aiReady = localAiReady || prepared
+  const kokoroAvailable = aiReady || (!isMobile && kokoroReady)
 
   const isThisBookPlaying = player.book?.slug === slug
   const isPlaying = isThisBookPlaying && player.playing
@@ -85,7 +87,7 @@ export function SmartPlayButtons({ slug, bookTitle, bookAuthor, chapters, active
         Play
       </button>
 
-      {/* AI play — only on desktop with Kokoro */}
+      {/* AI play — prepared narration anywhere, local generation on desktop */}
       {kokoroAvailable && !checking && (
         <button
           onClick={handleAiPlay}
@@ -94,7 +96,7 @@ export function SmartPlayButtons({ slug, bookTitle, bookAuthor, chapters, active
               ? 'bg-accent hover:bg-accent-hover text-btn-text'
               : 'bg-surface-hover text-accent hover:text-text border border-accent/30'
           }`}
-          title={aiReady ? 'Play cached AI voice' : 'Generate AI voice on this desktop'}
+          title={prepared ? 'Play AI narration' : aiReady ? 'Play cached AI voice' : 'Generate AI voice on this desktop'}
         >
           {aiReady ? '✦ AI' : '✦'}
         </button>

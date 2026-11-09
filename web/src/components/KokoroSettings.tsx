@@ -63,7 +63,7 @@ export function KokoroSettings({ kokoroReady, setKokoroReady }: KokoroSettingsPr
       </div>
 
       {isMobileDevice() ? (
-        <p className="text-sm text-text-dim">Use a desktop computer to download and use Kokoro AI. Browser voices are used on mobile.</p>
+        <p className="text-sm text-text-dim">Books in the catalogue come with AI narration ready to play on this device. Generating the AI voice for anything else needs a desktop computer.</p>
       ) : kokoroReady ? (
         <div className="space-y-3">
           <div>

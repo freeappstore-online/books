@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
+import { isPrepared, loadPreparedManifest, preparedUrl } from './preparedAudio'
 
 const VOICE_KEY = 'bp-kokoro-voice'
 const READY_KEY = 'bp-kokoro-ready'
@@ -268,6 +269,9 @@ function splitSentences(text: string): string[] {
 
 // ── Streaming playback ──
 
+/** Where each prepared chapter was stopped, so pause/play and rate changes resume instead of restarting. */
+const preparedPositions = new Map<string, number>()
+
 export async function kokoroStreamPlay(
   text: string,
   voiceId: string,
@@ -311,12 +315,40 @@ export async function kokoroStreamPlay(
     }
   }
 
+  // Helper: stream a prepared chapter, resuming where it was last stopped
+  function playPrepared(url: string) {
+    const audio = new Audio(url)
+    audio.playbackRate = rate
+    audio.currentTime = preparedPositions.get(url) ?? 0
+    let stopped = false
+    audio.addEventListener('playing', () => { onFirstAudio(); onProgress?.(1, 1) }, { once: true })
+    audio.addEventListener('ended', () => { preparedPositions.delete(url); if (!stopped) onDone() })
+    audio.addEventListener('error', () => { if (!stopped) onError(audio.error) })
+    audio.play().catch(err => { if (!stopped) onError(err) })
+    return {
+      stop() {
+        stopped = true
+        if (!audio.ended) preparedPositions.set(url, audio.currentTime)
+        audio.pause()
+        audio.removeAttribute('src')
+        audio.load()
+      },
+      mute() { audio.pause() },
+      unmute() { audio.play().catch(() => {}) },
+    }
+  }
+
   if (fullCacheKey) {
     // Check local IndexedDB cache
     const cached = await getCachedAudio(fullCacheKey)
     if (cached) {
       log('streamPlay: LOCAL CACHE HIT')
       return playBuffer(cached.audio, cached.sampleRate)
+    }
+
+    if (isPrepared(await loadPreparedManifest(), bookSlug!, chapterIdx!, voiceId)) {
+      log('streamPlay: PREPARED — streaming')
+      return playPrepared(preparedUrl(bookSlug!, chapterIdx!, voiceId))
     }
 
     log('streamPlay: CACHE MISS — generating locally')
