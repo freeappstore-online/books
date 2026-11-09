@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { getNarrationTime, playNarration, primeNarration, seekNarration, type Narration } from './narration'
-import { chapterSeconds, getLoadedManifest, isNarrated, loadPreparedManifest, preparedUrl } from './preparedAudio'
+import { chapterSeconds, getLoadedManifest, isNarrated, loadPreparedManifest, preparedUrl, type PreparedManifest } from './preparedAudio'
 import { playableManifest } from './offlineBooks'
 import {
   loadRate, saveRate, loadHistory, saveHistory, loadPosition, savePosition, saveSleepChoice,
@@ -75,6 +75,20 @@ interface AudioPlayerState {
 }
 
 const AudioPlayerContext = createContext<AudioPlayerState | null>(null)
+
+/** First chapter from `start` going `dir` that has narration, or -1. */
+function narratedFrom(m: PreparedManifest, b: AudioBook, start: number, dir: 1 | -1): number {
+  for (let i = start; i >= 0 && i < b.chapters.length; i += dir) {
+    if (chapterSeconds(m, b.slug, i) !== null) return i
+  }
+  return -1
+}
+
+/** Previous/Next can't go anywhere: no narrated chapter that way. Then it leaves playback alone. */
+function noChapterThatWay(b: AudioBook, start: number, dir: 1 | -1): boolean {
+  const m = getLoadedManifest()
+  return !!m && narratedFrom(playableManifest(m), b, start, dir) < 0
+}
 
 function sameRange(a: CharRange | null, b: CharRange | null) {
   return a === b || (!!a && !!b && a[0] === b[0] && a[1] === b[1])
@@ -166,7 +180,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   /**
    * Play chapter `idx` of the current book, from where it was stopped or from
    * the word at `charOffset`. Chapters without narration are passed over in
-   * the direction of travel; when none is left that way, nothing changes.
+   * the direction of travel; when none is left that way, playback stops.
    */
   const startPlayback = useCallback(async (start: number, charOffset?: number, dir: 1 | -1 = 1) => {
     const b = bookRef.current
@@ -181,9 +195,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     // Offline, only chapters saved on this device (books#24)
     const manifest = playableManifest(await loadPreparedManifest())
     if (gen !== genRef.current) return
-    let idx = start
-    while (idx >= 0 && idx < b.chapters.length && chapterSeconds(manifest, b.slug, idx) === null) idx += dir
-    if (idx < 0 || idx >= b.chapters.length) {
+    const idx = narratedFrom(manifest, b, start, dir)
+    if (idx < 0) {
       halt()
       setPlaying(false)
       if (!navigator.onLine) setError("You're offline, and the rest of this book isn't saved on this device.")
@@ -311,7 +324,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const b = bookRef.current
     if (!b || idx < 0 || idx >= b.chapters.length) return
     if (playing) {
-      startPlayback(idx, undefined, dir)
+      if (!noChapterThatWay(b, idx, dir)) startPlayback(idx, undefined, dir)
       return
     }
     setChapterIdx(idx)
@@ -428,7 +441,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const track = (delta: number) => {
       const b = bookRef.current
       const idx = chapterIdxRef.current + delta
-      if (b && idx >= 0 && idx < b.chapters.length) mediaActionsRef.current.startPlayback(idx, undefined, delta < 0 ? -1 : 1)
+      const dir = delta < 0 ? -1 : 1
+      if (b && idx >= 0 && idx < b.chapters.length && !noChapterThatWay(b, idx, dir)) mediaActionsRef.current.startPlayback(idx, undefined, dir)
     }
     ms.setActionHandler('play', () => mediaActionsRef.current.play())
     ms.setActionHandler('pause', () => mediaActionsRef.current.pause())
