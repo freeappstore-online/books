@@ -313,6 +313,24 @@ export function ReaderPage() {
     }
   }, [])
 
+  // The toolbar stays with the selection as the page scrolls or resizes
+  const hasSelection = selection !== null
+  useEffect(() => {
+    if (!hasSelection) return
+    const follow = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+      const rect = sel.getRangeAt(0).getBoundingClientRect()
+      setSelection(s => s && { ...s, rect })
+    }
+    window.addEventListener('scroll', follow, { passive: true })
+    window.addEventListener('resize', follow)
+    return () => {
+      window.removeEventListener('scroll', follow)
+      window.removeEventListener('resize', follow)
+    }
+  }, [hasSelection])
+
   const addHighlight = (color: HighlightColor, withNote: boolean) => {
     if (!slug || !selection || !currentChapter || excerpt) return
     const text = currentChapter.content.slice(selection.start, selection.end).trim()

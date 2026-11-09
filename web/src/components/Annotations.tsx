@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { topInset } from './ChapterText'
 import {
   HIGHLIGHT_COLORS, formatSeconds, removeAnnotation, sortAnnotations, updateAnnotation,
   type Annotation, type HighlightColor,
@@ -76,7 +77,10 @@ export function HighlightToolbar({ rect, onHighlight }: { rect: DOMRect; onHighl
   const gap = matchMedia('(pointer: coarse)').matches ? 32 : 8
   const player = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--player-h')) || 0
   const limit = window.innerHeight - player - height
-  const top = rect.bottom + gap <= limit ? rect.bottom + gap : Math.max(8, Math.min(limit, rect.top - gap - height))
+  // Hidden while the selection is scrolled under the sticky header or the player
+  const header = topInset()
+  if (rect.bottom < header || rect.top > window.innerHeight - player) return null
+  const top = rect.bottom + gap <= limit ? rect.bottom + gap : Math.max(header + 8, Math.min(limit, rect.top - gap - height))
   return (
     <div
       role="toolbar"

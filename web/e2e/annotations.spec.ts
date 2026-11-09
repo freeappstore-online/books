@@ -90,6 +90,27 @@ test('text can be selected and highlighted in the paragraph being read aloud', a
   await expect.poll(async () => (await marks(page)).word).toBeTruthy()
 })
 
+test('the highlight toolbar stays with the selection as the page scrolls, and hides under the header', async ({ page }) => {
+  await page.goto(`/read/${SLUG}`)
+  await page.waitForSelector('article h2')
+  await selectText(page, 5000, 5020)
+  const toolbar = page.getByRole('toolbar', { name: 'Highlight' })
+  await expect(toolbar).toBeVisible()
+  const gap = async () => {
+    const [t, s] = [await toolbar.boundingBox(), await page.evaluate(() => getSelection()!.getRangeAt(0).getBoundingClientRect().toJSON())]
+    return t ? Math.round(t.y - s.bottom) : null
+  }
+  const before = await gap()
+  await page.evaluate(() => window.scrollBy(0, 60))
+  await expect.poll(gap, { message: 'same place under the selection' }).toBe(before)
+  // The selection under the sticky header
+  await page.evaluate(() => {
+    const s = getSelection()!.getRangeAt(0).getBoundingClientRect()
+    window.scrollBy(0, s.bottom - 5)
+  })
+  await expect(toolbar).toHaveCount(0)
+})
+
 test('excerpt fallback keeps the reading position and shows or makes no annotations', async ({ context, page }) => {
   await page.goto('/')
   await page.evaluate(([progress, notes]) => {
