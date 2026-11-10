@@ -17,7 +17,7 @@ test.describe('wording and reading-only books', () => {
       localStorage.setItem('bp-library', '[{"slug":"alice-in-wonderland","voiceId":"af_heart"}]')
       localStorage.setItem('bp-audio-position', '{"alice-in-wonderland":{"chapterIdx":0,"charOffset":120}}')
     })
-    for (const [path, ready] of [['/', 'text=Audiobooks'], [`/read/${SLUG}`, 'article h2'], ['/library', 'text=Saved on this device'], ['/settings', 'text=Listening']]) {
+    for (const [path, ready] of [['/', 'h2:text-is("Audiobooks")'], [`/read/${SLUG}`, 'article h2'], ['/library', 'text=Saved on this device'], ['/settings', 'text=Listening']]) {
       await page.goto(path)
       await page.waitForSelector(ready)
       // The manifest decides what shows

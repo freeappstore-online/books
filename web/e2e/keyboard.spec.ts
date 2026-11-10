@@ -34,7 +34,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 test('catalogue: first Tab has a focus ring, "/" searches and typing stays in the field', async ({ page }) => {
   await page.goto('/')
-  await page.waitForSelector('text=Audiobooks')
+  await page.getByRole('heading', { name: 'Audiobooks', exact: true }).waitFor()
   await page.keyboard.press('Tab')
   const f = await focused(page)
   expect(f.tag).toBe('A')
@@ -197,7 +197,7 @@ test.describe('reduced motion', () => {
   test.use({ reducedMotion: 'reduce' })
   test('no smooth scroll, animations off', async ({ page }) => {
     await page.goto('/')
-    await page.waitForSelector('text=Audiobooks')
+    await page.getByRole('heading', { name: 'Audiobooks', exact: true }).waitFor()
     const r = await page.evaluate(() => {
       const el = document.createElement('div')
       el.className = 'animate-pulse'

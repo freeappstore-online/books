@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { CATALOG, GENRES, ALL_TAGS, type CatalogBook } from '../data/catalog'
 import { BookCover } from '../components/BookCover'
 import { NavBar } from '../components/NavBar'
 import { booksInProgress, progressPercent, useFinished, type BookProgress } from '../hooks/useReadingProgress'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { ListenButton } from '../components/ListenButton'
-import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
+import { preparedCount, usePreparedManifest } from '../hooks/preparedAudio'
 import { useOfflineBooks, useOnline, usePlayableManifest } from '../hooks/offlineBooks'
 
 export function CatalogPage() {
@@ -14,6 +14,14 @@ export function CatalogPage() {
   const [genre, setGenre] = useState<string>('')
   const [tag, setTag] = useState<string>('')
   const [sort, setSort] = useState<'title' | 'author' | 'year'>('title')
+  // Audiobooks only (books#34): in the URL, so it survives going back from a book and can be linked
+  const [params, setParams] = useSearchParams()
+  const audioOnly = params.get('audio') === '1'
+  const setAudioOnly = (on: boolean) => setParams(p => {
+    if (on) p.set('audio', '1')
+    else p.delete('audio')
+    return p
+  }, { replace: true })
   // Offline, only saved books can be listened to (books#24)
   const manifest = usePlayableManifest()
   const { saved } = useOfflineBooks()
@@ -23,7 +31,10 @@ export function CatalogPage() {
 
   // Books with narration can be listened to; none show as such while the manifest loads (books#19)
   const entries = useMemo(
-    () => CATALOG.map(book => ({ book, narrated: Boolean(manifest && isNarrated(manifest, book.id)) })),
+    () => CATALOG.map(book => {
+      const narratedChapters = manifest ? preparedCount(manifest, book.id) : 0
+      return { book, narrated: narratedChapters > 0, narratedChapters }
+    }),
     [manifest],
   )
 
@@ -41,6 +52,7 @@ export function CatalogPage() {
     }
     if (genre) books = books.filter(({ book }) => book.genre === genre)
     if (tag) books = books.filter(({ book }) => book.tags.includes(tag))
+    if (audioOnly) books = books.filter(e => e.narrated)
 
     books.sort((a, b) => {
       if (sort === 'year') return a.book.year - b.book.year
@@ -48,7 +60,7 @@ export function CatalogPage() {
     })
 
     return books
-  }, [entries, search, genre, tag, sort])
+  }, [entries, search, genre, tag, audioOnly, sort])
 
   const player = useAudioPlayer()
   const finished = useFinished()
@@ -59,6 +71,7 @@ export function CatalogPage() {
     [player.history, fullManifest, finished],
   )
 
+  const filtering = Boolean(search || genre || tag || audioOnly)
   const featured = entries.slice(0, 4)
   const audiobooks = entries.filter(e => e.narrated).slice(0, 4)
 
@@ -112,6 +125,15 @@ export function CatalogPage() {
                 <option value="author">By Author</option>
                 <option value="year">By Year</option>
               </select>
+              <button
+                onClick={() => setAudioOnly(!audioOnly)}
+                aria-pressed={audioOnly}
+                className={`shrink-0 rounded-lg px-3 py-3 text-base md:text-sm font-semibold border transition ${
+                  audioOnly ? 'bg-accent border-accent text-btn-text' : 'bg-surface border-border text-text hover:border-accent'
+                }`}
+              >
+                Audiobooks
+              </button>
             </div>
           </div>
 
@@ -139,16 +161,21 @@ export function CatalogPage() {
         </div>
       </section>
 
-      {!search && !genre && !tag && audiobooks.length > 0 && (
+      {!filtering && audiobooks.length > 0 && (
         <section className="px-4 md:px-6 pb-10 md:pb-12 max-w-6xl mx-auto">
-          <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">Audiobooks</h2>
+          <div className="flex items-baseline justify-between gap-3 mb-4 md:mb-6">
+            <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider">Audiobooks</h2>
+            <button onClick={() => setAudioOnly(true)} className="min-h-10 md:min-h-0 text-sm text-accent hover:underline">
+              See all audiobooks
+            </button>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {audiobooks.map(({ book }) => (
+            {audiobooks.map(({ book, narratedChapters }) => (
               <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
                 <BookCover book={book} size="lg" />
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
-                  <AudiobookPill />
+                  <AudiobookPill narrated={narratedChapters} chapters={book.chapters} />
                 </div>
               </Link>
             ))}
@@ -156,16 +183,16 @@ export function CatalogPage() {
         </section>
       )}
 
-      {!search && !genre && !tag && (
+      {!filtering && (
         <section className="px-4 md:px-6 pb-10 md:pb-12 max-w-6xl mx-auto">
           <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">Featured</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {featured.map(({ book, narrated }) => (
+            {featured.map(({ book, narrated, narratedChapters }) => (
               <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
                 <BookCover book={book} size="lg" />
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
-                  {narrated && <AudiobookPill />}
+                  {narrated && <AudiobookPill narrated={narratedChapters} chapters={book.chapters} />}
                 </div>
               </Link>
             ))}
@@ -175,17 +202,19 @@ export function CatalogPage() {
 
       <section className="px-4 md:px-6 pb-20 max-w-6xl mx-auto">
         <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">
-          {search || genre || tag ? `${filtered.length} results` : 'All Books'}
+          {filtering ? `${filtered.length} ${audioOnly && !search && !genre && !tag ? 'audiobooks' : 'results'}` : 'All Books'}
         </h2>
         <div className="grid gap-3 md:gap-4">
-          {filtered.map(({ book, narrated }) => (
+          {filtered.map(({ book, narratedChapters }) => (
             <BookListItem
-              key={book.id} book={book} narrated={narrated} saved={Boolean(saved[book.id])} online={online}
+              key={book.id} book={book} narrated={narratedChapters} saved={Boolean(saved[book.id])} online={online}
               progress={progress.get(book.id)} finished={Boolean(finished[book.id])}
             />
           ))}
           {filtered.length === 0 && (
-            <p className="text-text-muted py-12 text-center">No books match your search.</p>
+            <p className="text-text-muted py-12 text-center">
+              {audioOnly && !manifest ? 'Loading audiobooks…' : audioOnly && !online ? 'No audiobooks saved on this device.' : 'No books match your search.'}
+            </p>
           )}
         </div>
       </section>
@@ -201,7 +230,7 @@ export function CatalogPage() {
 }
 
 function BookListItem({ book, narrated, saved, online, progress, finished }: {
-  book: CatalogBook; narrated: boolean; saved: boolean; online: boolean; progress?: BookProgress; finished: boolean
+  book: CatalogBook; narrated: number; saved: boolean; online: boolean; progress?: BookProgress; finished: boolean
 }) {
   const pct = progress ? progressPercent(progress) : 0
 
@@ -218,7 +247,7 @@ function BookListItem({ book, narrated, saved, online, progress, finished }: {
             <h3 className="font-display text-base md:text-lg [overflow-wrap:anywhere] group-hover:text-accent transition">{book.title}</h3>
             <p className="text-xs md:text-sm text-text-muted mt-0.5">{book.author} &middot; {formatYear(book.year)} &middot; {book.genre}</p>
           </div>
-          {narrated && <AudiobookPill />}
+          {narrated > 0 && <AudiobookPill narrated={narrated} chapters={book.chapters} />}
         </div>
 
         <p className="text-xs md:text-sm text-text-dim mt-1.5 md:mt-2 line-clamp-2 hidden sm:block">{book.description}</p>
@@ -288,10 +317,11 @@ function ContinueShelf({ entries, dim }: { entries: { book: CatalogBook; narrate
   )
 }
 
-function AudiobookPill() {
+/** Partly narrated books say how many chapters can be listened to (books#31). */
+function AudiobookPill({ narrated, chapters }: { narrated: number; chapters: number }) {
   return (
     <span className="shrink-0 rounded-full bg-success/15 px-2 py-1 text-[11px] font-semibold text-success">
-      Audiobook
+      Audiobook{narrated < chapters && ` · ${narrated}/${chapters} ch`}
     </span>
   )
 }
