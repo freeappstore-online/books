@@ -13,14 +13,12 @@ export const UI_TEXT = { min: 80, max: 150, step: 5, default: 100 }
 const clamp = (v: number, { min, max }: { min: number; max: number }) => Math.min(max, Math.max(min, v))
 
 function read(key: string, range: typeof BOOK_TEXT): number {
-  try {
-    const v = Number(readLocal(key))
-    return v ? clamp(v, range) : range.default
-  } catch { return range.default }
+  const v = Number(readLocal(key))
+  return v ? clamp(v, range) : range.default
 }
 
 function write(key: string, value: number) {
-  try { writeLocal(key, String(value)) } catch {}
+  writeLocal(key, String(value))
   window.dispatchEvent(new Event(CHANGED_EVENT))
 }
 

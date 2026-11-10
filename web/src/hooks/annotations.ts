@@ -57,7 +57,7 @@ function update(slug: string, fn: (list: Annotation[]) => Annotation[]) {
   const list = fn(store[slug] ?? [])
   if (list.length) store[slug] = list
   else delete store[slug]
-  try { writeLocal(KEY, JSON.stringify(store)) } catch {}
+  writeLocal(KEY, JSON.stringify(store))
   for (const listener of listeners) listener()
 }
 

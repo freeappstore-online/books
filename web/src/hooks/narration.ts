@@ -1,4 +1,4 @@
-import { readLocal, writeLocal } from './localStorage'
+import { readLocalRecord, writeLocal } from './localStorage'
 /**
  * Plays the prepared narration (books#4, #23): one chapter at a time through
  * one shared <audio> element, from the saved copy when the book is kept
@@ -11,17 +11,14 @@ import { savedResponse } from './offlineBooks'
 /** Where each chapter was stopped (seconds by URL), kept across reloads. */
 const POSITIONS_KEY = 'bp-prepared-positions'
 function loadPositions(): Record<string, number> {
-  try {
-    const parsed = JSON.parse(readLocal(POSITIONS_KEY) || '{}')
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return Object.fromEntries(Object.entries(parsed).filter(([, n]) => typeof n === 'number' && Number.isFinite(n) && n >= 0)) as Record<string, number>
-  } catch { return {} }
+  return Object.fromEntries(Object.entries(readLocalRecord<number>(POSITIONS_KEY))
+    .filter(([, n]) => typeof n === 'number' && Number.isFinite(n) && n >= 0))
 }
 function savePosition(url: string, seconds: number | null) {
   const positions = loadPositions()
   if (seconds === null || seconds < 1) delete positions[url]
   else positions[url] = seconds
-  try { writeLocal(POSITIONS_KEY, JSON.stringify(positions)) } catch {}
+  writeLocal(POSITIONS_KEY, JSON.stringify(positions))
 }
 
 /**

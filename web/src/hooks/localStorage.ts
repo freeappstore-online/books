@@ -15,9 +15,10 @@ if (typeof window !== 'undefined') {
   })
 }
 
+/** The stored value, null when there is none or storage can't be read. */
 export function readLocal(key: string): string | null {
   if (pending.has(key)) return pending.get(key)!
-  return localStorage.getItem(key)
+  try { return localStorage.getItem(key) } catch { return null }
 }
 
 export function readLocalRecord<T>(key: string): Record<string, T> {
@@ -27,6 +28,7 @@ export function readLocalRecord<T>(key: string): Record<string, T> {
   } catch { return {} }
 }
 
+/** Never throws: a failed write is kept in memory (see above); false then. */
 export function writeLocal(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value)

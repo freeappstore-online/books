@@ -22,6 +22,13 @@ describe('personal data when browser storage is full', () => {
     expect(JSON.parse(localStorage.getItem('notes')!)).toEqual(['saved', 'first edit', 'second edit'])
   })
 
+  it('reads nothing, rather than throwing, when storage is blocked', () => {
+    const get = vi.spyOn(localStorage, 'getItem').mockImplementation(() => { throw new DOMException('Blocked', 'SecurityError') })
+    expect(readLocal('notes')).toBeNull()
+    expect(readLocalRecord('notes')).toEqual({})
+    get.mockRestore()
+  })
+
   it('retrying one key does not discard a different pending change', () => {
     const set = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('Unavailable') })
     writeLocal('progress', 'chapter 4')

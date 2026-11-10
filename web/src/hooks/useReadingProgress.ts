@@ -32,7 +32,7 @@ export function getProgress(slug: string): ReadingProgress | null {
 export function saveProgress(slug: string, chapterIdx: number, totalChapters: number, scroll = 0, fraction?: number) {
   const all = loadAll()
   all[slug] = { chapterIdx, totalChapters, scroll, fraction, lastRead: Date.now() }
-  try { writeLocal(KEY, JSON.stringify(all)) } catch {}
+  writeLocal(KEY, JSON.stringify(all))
 }
 
 // ── Finished books: slug → when it was marked finished ──
@@ -58,7 +58,7 @@ export function setFinished(slug: string, done: boolean) {
   finished = loadFinished()
   if (done) finished[slug] = Date.now()
   else delete finished[slug]
-  try { writeLocal(FINISHED_KEY, JSON.stringify(finished)) } catch {}
+  writeLocal(FINISHED_KEY, JSON.stringify(finished))
   for (const listener of finishedListeners) listener()
 }
 
