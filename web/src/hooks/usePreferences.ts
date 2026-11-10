@@ -53,6 +53,3 @@ function usePreference(get: () => number): number {
 
 export const useReaderFontSize = () => usePreference(getReaderFontSize)
 export const useUiScale = () => usePreference(getUiScale)
-
-// Apply on load
-applyUiScale(getUiScale())
