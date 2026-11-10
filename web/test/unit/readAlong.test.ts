@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  positionByProportion, positionFromTimings, sentenceRanges, timeAtChar, timeForChar,
+  loadTimings, positionByProportion, positionFromTimings, sentenceRanges, timeAtChar, timeForChar,
   type CharRange, type TimingSegment,
 } from '../../src/hooks/readAlong'
 
@@ -142,5 +142,28 @@ describe('positionByProportion', () => {
     const mid = positionByProportion(text, ranges, 300, 600)!
     expect(mid[0]).toBeLessThanOrEqual(text.length / 2)
     expect(ranges[ranges.indexOf(mid) + 1][0]).toBeGreaterThan(text.length / 2)
+  })
+})
+
+describe('loadTimings', () => {
+  const ok = { ok: true, status: 200, json: async () => ({ v: 1, segments: [[0, 5, 0, 1]] }) }
+
+  it('tries again after a failed request, but remembers timings that are not published (books#28)', async () => {
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce(ok)
+    vi.stubGlobal('fetch', fetch)
+    expect(await loadTimings('retry-book', 0)).toBeNull()
+    expect(await loadTimings('retry-book', 0)).toBeNull()
+    expect(await loadTimings('retry-book', 0)).toEqual([[0, 5, 0, 1]])
+    expect(await loadTimings('retry-book', 0)).toEqual([[0, 5, 0, 1]])
+    expect(fetch).toHaveBeenCalledTimes(3)
+
+    fetch.mockResolvedValue({ ok: false, status: 404 })
+    expect(await loadTimings('retry-book', 1)).toBeNull()
+    expect(await loadTimings('retry-book', 1)).toBeNull()
+    expect(fetch).toHaveBeenCalledTimes(4)
+    vi.unstubAllGlobals()
   })
 })

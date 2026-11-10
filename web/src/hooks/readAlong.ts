@@ -28,10 +28,13 @@ export function loadTimings(slug: string, chapterIdx: number): Promise<TimingSeg
   let p = timingsCache.get(url)
   if (!p) {
     // Saved books keep their timings on the device (offline reading)
+    // Timings not published (404) stay known; a failed request is tried again the next time
+    // the chapter plays, rather than leaving it without read-along until a reload
+    const retry = () => { timingsCache.delete(url); return null }
     p = fetchSavedOr(url)
-      .then(r => (r.ok ? r.json() : null))
+      .then(r => (r.ok ? r.json() : r.status === 404 ? null : retry()))
       .then(d => (Array.isArray(d?.segments) && d.segments.length > 0 ? d.segments as TimingSegment[] : null))
-      .catch(() => null)
+      .catch(retry)
     timingsCache.set(url, p)
   }
   return p
