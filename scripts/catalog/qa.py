@@ -29,6 +29,8 @@ SHORT_OK = {
     "doctor-faustus": "the editor's footnotes are left out",
     "on-liberty": "W. L. Courtney's introduction and the footnotes are left out",
     "the-enchiridion": "Albert Salomon's introduction, the bibliography and the footnotes are left out",
+    "waverley": "Scott's prefaces and introduction, Lang's editor's introduction, the notes and the glossaries are left out",
+    "life-on-the-mississippi": "Twain's four appendices of extracts from other writers are left out",
 }
 LEFTOVER = [
     ("gutenberg", r"Project Gutenberg|gutenberg\.(?:org|net)|\bPG\b"),

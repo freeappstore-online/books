@@ -62,6 +62,7 @@ SKIP = {
     "the-awakening": GENERATED,
     "the-canterbury-tales": GENERATED,
     "the-communist-manifesto": GENERATED,
+    "the-great-god-pan": GENERATED,
     "the-house-of-the-seven-gables": GENERATED,
     "the-lost-world": GENERATED,
     "the-mysterious-island": GENERATED,
