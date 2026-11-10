@@ -210,6 +210,12 @@ export function ReaderPage() {
   const visibleChapterIdx = chapters.findIndex(c => c.id === activeChapter)
   const manifest = usePreparedManifest()
   const online = useOnline()
+  // Back online on the excerpt: load the whole book, which can then be listened to (books#35)
+  useEffect(() => {
+    if (!online || !excerpt || !slug) return
+    setNotSavedOffline(false)
+    loadFromCatalog(slug)
+  }, [online])
   // Only narrated books can be listened to; false while the manifest loads (books#19).
   // Offline, only if saved on this device (books#24).
   const narrated = Boolean(slug && manifest && isNarrated(playableManifest(manifest, online), slug))
