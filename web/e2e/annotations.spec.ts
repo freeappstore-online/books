@@ -94,6 +94,12 @@ test('the highlight toolbar stays with the selection as the page scrolls, and hi
   await page.goto(`/read/${SLUG}`)
   await page.waitForSelector('article h2')
   await selectText(page, 5000, 5020)
+  // A person selects what they can see: on a phone-sized viewport offset 5000 may start below the fold,
+  // where the toolbar is deliberately hidden
+  await page.evaluate(() => {
+    const r = getSelection()!.getRangeAt(0).getBoundingClientRect()
+    window.scrollBy({ top: r.top - window.innerHeight / 2, behavior: 'instant' })
+  })
   const toolbar = page.getByRole('toolbar', { name: 'Highlight' })
   await expect(toolbar).toBeVisible()
   const gap = async () => {
@@ -101,12 +107,14 @@ test('the highlight toolbar stays with the selection as the page scrolls, and hi
     return t ? Math.round(t.y - s.bottom) : null
   }
   const before = await gap()
-  await page.evaluate(() => window.scrollBy(0, 60))
-  await expect.poll(gap, { message: 'same place under the selection' }).toBe(before)
+  // The app scrolls smoothly (CSS); measure after the scroll, not during it
+  await page.evaluate(() => window.scrollBy({ top: 60, behavior: 'instant' }))
+  // Within a pixel: subpixel layout rounds differently after a scroll
+  await expect.poll(async () => Math.abs((await gap())! - before!) <= 1, { message: 'same place under the selection' }).toBe(true)
   // The selection under the sticky header
   await page.evaluate(() => {
     const s = getSelection()!.getRangeAt(0).getBoundingClientRect()
-    window.scrollBy(0, s.bottom - 5)
+    window.scrollBy({ top: s.bottom - 5, behavior: 'instant' })
   })
   await expect(toolbar).toHaveCount(0)
 })
