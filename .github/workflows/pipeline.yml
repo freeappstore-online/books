@@ -41,7 +41,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -q Pillow huggingface_hub
+      # test_audio.py encodes and measures audio with ffmpeg, numpy and soundfile (books#37)
+      - run: sudo apt-get install -y -qq ffmpeg > /dev/null
+      - run: pip install -q Pillow -r scripts/audio/requirements.txt
       - name: Unit and consistency tests
         run: |
           python scripts/catalog/test_catalog.py

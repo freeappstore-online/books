@@ -78,6 +78,31 @@ class Split(unittest.TestCase):
         self.assertIn("title", differences([{"title": "Two", "content": "abc"}], a)[0])
 
 
+class TitlePages(unittest.TestCase):
+    def test_title_page_left_between_chapters_goes(self):
+        """books#37: a volume's title page at a chapter's end, and the byline after it, are not text."""
+        chapters = [["Text.", "HENRY JAMES", "THE PORTRAIT OF A LADY"], ["By Henry James", "On the morrow."],
+                    ["More.", "WAVERLEY", "OR", "’TIS SIXTY YEARS SINCE"]]
+        self.assertEqual(fetch.strip_title_pages(chapters, "The Portrait of a Lady"),
+                         [["Text.", "HENRY JAMES"], ["On the morrow."], chapters[2]])
+        self.assertEqual(fetch.strip_title_pages([chapters[2]], "Waverley"), [["More."]])
+        self.assertEqual(fetch.strip_title_pages([["Words.", "The Wonderful Wizard of Oz"]], "The Wonderful Wizard of Oz"),
+                         [["Words."]])
+
+    def test_signatures_speech_and_poem_titles_stay(self):
+        for blocks, title in [(["All art is quite useless.", "OSCAR WILDE"], "The Picture of Dorian Gray"),
+                              (["came as an answer:", "‘Little Dorrit.’"], "Little Dorrit"),
+                              (["And his name is", "DAVID COPPERFIELD."], "David Copperfield")]:
+            self.assertEqual(fetch.strip_title_pages([blocks], title), [blocks])
+        later = [["A poem."], ["By Blue Ontario’s Shore", "A chant."]]
+        self.assertEqual(fetch.strip_title_pages(later, "Leaves of Grass"), later)
+
+    def test_gutenberg_title(self):
+        self.assertEqual(fetch.gutenberg_title("Title: Rob Roy — Complete\n"), "Rob Roy")
+        self.assertEqual(fetch.gutenberg_title("Title: Tess of the d'Urbervilles: A Pure Woman\n"), "Tess of the d'Urbervilles")
+        self.assertEqual(fetch.gutenberg_title("no header"), "")
+
+
 class Lock(unittest.TestCase):
     def test_a_changed_source_stops_the_build(self):
         lock = fetch.Lock("verify")

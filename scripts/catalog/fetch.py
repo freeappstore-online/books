@@ -14,8 +14,8 @@ with the committed web/public/catalog/<slug>.json, writing nothing; it exits 1 o
 so a hand edit of a catalogue file or a change to this script that re-splits a book is caught.
 
 Content is what the reader shows and TTS reads verbatim, so headings, licence text, tables of
-contents and markup never reach it. Paragraphs are separated by a blank line; prose is unwrapped,
-verse keeps its line breaks.
+contents and markup never reach it, nor the title page a volume repeats between chapters.
+Paragraphs are separated by a blank line; prose is unwrapped, verse keeps its line breaks.
 """
 import hashlib, json, os, re, sys, time, urllib.request
 from concurrent.futures import ProcessPoolExecutor
@@ -366,6 +366,12 @@ def download(cache: str, gid: int) -> str:
     return data.decode("utf-8-sig")
 
 
+def gutenberg_title(raw: str) -> str:
+    """The book's title from the header ("Title: Rob Roy — Complete" -> "Rob Roy"), or ""."""
+    m = re.search(r"^Title:\s*(.+)$", raw, re.M)
+    return re.split(r"\s+—\s+|[:;]", m[1])[0].strip() if m else ""
+
+
 def gutenberg_body(raw: str) -> str:
     """The text between the *** START OF / *** END OF markers."""
     raw = raw.replace("\r", "").replace("\ufeff", "")
@@ -452,6 +458,7 @@ def clean_inline(text: str) -> str:
     text = re.sub(r"(?mi)^[ \t]*end of (?:the )?(?:first|second|third|fourth|fifth|\w+) (?:volume|part|book)\.?[ \t]*$", "", text)
     text = re.sub(r"\(Mem\.,?[^)]*\)|\(Kept in [^)]*\)", "", text)
     text = re.sub(r"(?m)^.*\.(?:jpg|jpeg|png|gif) \(\d+K\)\s*$|^\s*Full Size\s*$", "", text)
+    text = re.sub(r"(?m)^[ \t]*\d{4,5}m[ \t]*$", "", text)  # illustration ids like 0107m (books#37)
     return text
 
 
@@ -599,7 +606,36 @@ def is_prose(block: str) -> bool:
     return len(block) >= 200 and not is_verse(lines)
 
 
-def split_book(body: str, opts: dict) -> list[dict]:
+BYLINE = r"[Bb]y (?:[A-Z][\w.’'-]*\s?){1,5}"
+
+
+def strip_title_pages(chapters: list[list[str]], title: str) -> list[list[str]]:
+    """Each chapter's blocks without the book's title page left at its end ("WAVERLEY" / "OR" /
+    "’TIS SIXTY YEARS SINCE", "The Wonderful Wizard of Oz", "ROB ROY" / "By Sir Walter Scott"), nor
+    the byline left at the start of the chapter after one, or of the first (books#37). Only the
+    blocks from the one naming the book onwards go, so a signature like "HENRY JAMES" stays, and
+    a quoted line is speech, not a title ("‘Little Dorrit.’")."""
+    key = norm(title)
+
+    def title_like(block):
+        s = block.strip()
+        return len(s) <= 100 and "\n" not in s and not re.search(r"^[‘“\"']|[.!?][’”\"')]*$", s) \
+            and (norm(s) == key or s.isupper() or bool(re.fullmatch(BYLINE, s)))
+
+    out, cut = [], True
+    for blocks in chapters:
+        while cut and blocks and re.fullmatch(BYLINE, blocks[0].strip()):
+            blocks = blocks[1:]
+        n = len(blocks)
+        while n and title_like(blocks[n - 1]):
+            n -= 1
+        named = [k for k in range(n, len(blocks)) if key and key in norm(blocks[k])]
+        cut = bool(named)
+        out.append(blocks[:named[0]] if named else blocks)
+    return out
+
+
+def split_book(body: str, opts: dict, book_title: str = "") -> list[dict]:
     lines = body.split("\n")
     toc = toc_entries(clean_inline(body).split("\n")) if opts.get("toc") else {}
     if opts.get("start"):
@@ -752,7 +788,9 @@ def split_book(body: str, opts: dict) -> list[dict]:
         for c in chapters:
             if c["parent"]:
                 c["title"] = f"{c['parent'].split(':')[0]}, {c['title']}"
-    out = [{"title": c["title"], "content": blocks_to_content(c["blocks"], opts.get("verse", False))} for c in chapters]
+    texts = strip_title_pages([c["blocks"] for c in chapters], book_title)
+    out = [{"title": c["title"], "content": blocks_to_content(b, opts.get("verse", False))}
+           for c, b in zip(chapters, texts)]
     out = [c for c in out if c["content"]]
     merged = []
     for c in out:  # a few lines (a short poem, an epigraph) join the chapter before
@@ -825,7 +863,8 @@ def volumes(slug: str) -> list[tuple[int, dict]]:
 def build(cache: str, slug: str) -> list[dict]:
     chapters = []
     for gid, opts in volumes(slug):
-        chapters += split_book(gutenberg_body(download(cache, gid)), opts)
+        raw = download(cache, gid)
+        chapters += split_book(gutenberg_body(raw), opts, gutenberg_title(raw))
     return chapters
 
 
