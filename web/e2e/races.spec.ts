@@ -63,6 +63,23 @@ test('a pause the app did not make (headphones, a call) shows as paused and resu
   expect((await audio(page))!.t).toBeLessThan(at + 3)
 })
 
+test('playing in a second tab pauses the first: one voice at a time (books#28)', async ({ context, baseURL, page }) => {
+  await stubHuggingFace(context, baseURL!)
+  await page.goto(`/read/${SLUG}`)
+  await headerPlay(page).click()
+  await expectPlaying(page, 0, 1)
+  const second = await context.newPage()
+  await second.goto(`/read/${SLUG}`)
+  await headerPlay(second).click()
+  await expectPlaying(second, 0, 0.3)
+  await expect(bar(page).getByRole('button', { name: 'Resume' })).toBeVisible()
+  expect((await audio(page))!.paused).toBe(true)
+  // And back: playing the first again pauses the second
+  await bar(page).getByRole('button', { name: 'Resume' }).click()
+  await expectPlaying(page, 0)
+  await expect(bar(second).getByRole('button', { name: 'Resume' })).toBeVisible()
+})
+
 test.describe('chapters without narration', () => {
   test('Previous passes over a chapter without narration and does not bounce forward', async ({ context, baseURL, page }) => {
     await stubHuggingFace(context, baseURL!, { durations: DURATIONS.map((d, i) => (i === 1 ? null : d)) })

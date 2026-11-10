@@ -123,6 +123,17 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => { narrationRef.current?.stop() }, [])
 
+  // One tab plays at a time: playing in another tab (or the installed app) pauses this one
+  const channelRef = useRef<BroadcastChannel | null>(null)
+  const pauseRef = useRef(() => {})
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const channel = new BroadcastChannel('bp-playing')
+    channel.onmessage = () => pauseRef.current()
+    channelRef.current = channel
+    return () => channel.close()
+  }, [])
+
   const readAlongRef = useRef<ReadAlongPosition | null>(null)
   const readAlongListenersRef = useRef(new Set<() => void>())
   const setReadAlong = useCallback((pos: ReadAlongPosition | null) => {
@@ -225,7 +236,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
     try {
       const narration = await playNarration(b.slug, idx, rateRef.current, {
-        onPlaying: () => { if (gen === genRef.current) setLoading(false) },
+        onPlaying: () => {
+          if (gen !== genRef.current) return
+          setLoading(false)
+          channelRef.current?.postMessage('playing')
+        },
         onEnded: () => { if (gen === genRef.current) finishChapterRef.current(idx) },
         // Headphones unplugged, a call, another app: the browser paused it
         onPaused: () => { if (gen === genRef.current) { halt(); setPlaying(false) } },
@@ -319,6 +334,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     setPlaying(false)
     setError(null)
   }, [halt])
+  pauseRef.current = () => { if (playing) pause() }
 
   const setChapterAndPlay = useCallback((idx: number, dir: 1 | -1 = 1) => {
     const b = bookRef.current
