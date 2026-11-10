@@ -97,7 +97,7 @@ test.describe('chapters without narration', () => {
   test('Previous with no narrated chapter before it keeps playing', async ({ context, baseURL, page }) => {
     await stubHuggingFace(context, baseURL!, { durations: DURATIONS.map((d, i) => (i === 0 ? null : d)) })
     await page.goto(`/read/${SLUG}`)
-    await expect(headerPlay(page)).toBeVisible()
+    await page.waitForSelector('article h2')
     await openChapter(page, 2)
     await headerPlay(page).click()
     await expectPlaying(page, 2)
@@ -120,11 +120,9 @@ test.describe('chapters without narration', () => {
     await expect(bar(page)).toContainText(`Ch ${SHORT_CH + 1}/`)
     await expect(page.locator('article h2')).toContainText('Chapter 2:')
 
-    // Play on a chapter after the last narrated one: nothing to play, the reader stays
+    // A chapter after the last narrated one is reading-only: no Play (books#31)
     await openChapter(page, 5)
-    await headerPlay(page).click()
-    await page.waitForTimeout(1000)
-    await expect(headerPlay(page)).toBeVisible()
     await expect(page.locator('article h2')).toContainText('Chapter 6:')
+    await expect(headerPlay(page)).toHaveCount(0)
   })
 })

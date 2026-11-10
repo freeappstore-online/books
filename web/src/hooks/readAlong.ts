@@ -40,7 +40,7 @@ export function loadTimings(slug: string, chapterIdx: number): Promise<TimingSeg
   return p
 }
 
-/** Sentence ranges of `text`, for a sentence highlight without timings. */
+/** Sentence ranges of `text`. */
 export function sentenceRanges(text: string): CharRange[] {
   const ranges: CharRange[] = []
   let start = 0
@@ -94,13 +94,6 @@ export function positionFromTimings(text: string, segments: TimingSegment[], t: 
     if (acc > target) return { sentence, word: w.range }
   }
   return { sentence, word: ws[ws.length - 1].range }
-}
-
-/** Sentence at `t` of `duration` seconds, assuming characters are spoken at an even pace. */
-export function positionByProportion(text: string, sentences: CharRange[], t: number, duration: number): CharRange | null {
-  if (sentences.length === 0 || !(duration > 0)) return null
-  const char = Math.min(1, Math.max(0, t / duration)) * text.length
-  return sentences[lastAtOrBefore(sentences, char, r => r[0])]
 }
 
 /** Seconds at which the word at char `offset` is spoken, from the timings. */

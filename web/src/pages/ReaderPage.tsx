@@ -24,7 +24,7 @@ import { TimeLeft } from '../components/TimeLeft'
 import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
 import { CATALOG } from '../data/catalog'
 import { BookNotFound } from '../components/BookNotFound'
-import { isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
+import { chapterSeconds, isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
 
 /** Chapter offset of the first text on screen, for a bookmark of the reading position. */
 function firstVisibleOffset(container: HTMLElement): number {
@@ -231,6 +231,8 @@ export function ReaderPage() {
   // Offline, only if saved on this device (books#24).
   const narrated = Boolean(slug && manifest && isNarrated(playableManifest(manifest, online), slug))
   const listenOffline = Boolean(slug && manifest && !online && !narrated && isNarrated(manifest, slug))
+  // A partly narrated book plays only its narrated chapters (books#31)
+  const chapterNarrated = Boolean(narrated && chapterSeconds(manifest!, slug!, visibleChapterIdx) !== null)
 
   const handleTextClick = useCallback((e: React.MouseEvent) => {
     if (!slug || !currentChapter) return
@@ -243,7 +245,7 @@ export function ReaderPage() {
       setEditing(highlight)
       return
     }
-    if (!narrated) return
+    if (!chapterNarrated) return
 
     const container = e.currentTarget as HTMLElement
     // caretPositionFromPoint is the standard (Firefox has only this one); WebKit has caretRangeFromPoint
@@ -255,7 +257,7 @@ export function ReaderPage() {
 
     // Listen from the clicked word (seeks there when this chapter is playing)
     player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx, textOffset(container, caretNode, caretOffset))
-  }, [slug, currentChapter, narrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx, annotations])
+  }, [slug, currentChapter, chapterNarrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx, annotations])
 
   /** Show chapter `chapterIdx` scrolled to char `offset`. */
   const jumpTo = useCallback((chapterIdx: number, offset: number) => {
@@ -598,10 +600,10 @@ export function ReaderPage() {
                 content={currentChapter.content}
                 chapterIdx={visibleChapterIdx}
                 active={isThisBookPlaying && player.playing}
-                className={`${themeStyle.muted} whitespace-pre-wrap ${narrated ? 'cursor-pointer' : ''}`}
+                className={`${themeStyle.muted} whitespace-pre-wrap ${chapterNarrated ? 'cursor-pointer' : ''}`}
                 style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
                 onClick={handleTextClick}
-                title={narrated ? 'Click to start listening from here' : undefined}
+                title={chapterNarrated ? 'Click to start listening from here' : undefined}
                 marks={marks}
                 focus={focus}
               />

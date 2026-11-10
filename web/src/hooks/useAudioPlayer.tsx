@@ -7,7 +7,7 @@ import {
   type HistoryEntry,
 } from './audioStorage'
 import {
-  loadTimings, positionFromTimings, positionByProportion, sentenceRanges, timeForChar,
+  loadTimings, positionFromTimings, timeForChar,
   type CharRange, type ReadAlongPosition, type TimingSegment,
 } from './readAlong'
 
@@ -166,19 +166,13 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const track: NonNullable<typeof trackRef.current> = { audio, idx, text }
     trackRef.current = track
     loadTimings(b.slug, idx).then(t => { track.timings = t })
-    let sentences: CharRange[] | null = null
     // currentTime has no change event finer than timeupdate (4 Hz): read it each frame.
     // setReadAlong only notifies when the word or sentence changes.
     const tick = () => {
-      if (gen !== genRef.current || audio.ended) return
-      if (audio.readyState > 0 && !audio.seeking && track.timings !== undefined) {
-        const t = audio.currentTime
-        if (track.timings) {
-          setReadAlong({ chapterIdx: idx, ...positionFromTimings(text, track.timings, t) })
-        } else {
-          sentences ??= sentenceRanges(text)
-          setReadAlong({ chapterIdx: idx, sentence: positionByProportion(text, sentences, t, audio.duration), word: null })
-        }
+      // A chapter without timings plays without read-along: a guessed highlight drifts (books#31)
+      if (gen !== genRef.current || audio.ended || track.timings === null) return
+      if (audio.readyState > 0 && !audio.seeking && track.timings) {
+        setReadAlong({ chapterIdx: idx, ...positionFromTimings(text, track.timings, audio.currentTime) })
       }
       requestAnimationFrame(tick)
     }

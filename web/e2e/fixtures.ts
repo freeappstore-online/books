@@ -15,6 +15,14 @@ export const alice = JSON.parse(readFileSync(new URL('../public/catalog/alice-in
 }
 export const chapterUrl = (idx: number) => `${HF}af_heart/${SLUG}/${idx}.m4a`
 
+/**
+ * A partly narrated book without timings, as the books published in books#31: chapters 1, 2 (3 s)
+ * and 18 narrated, 3–17 not.
+ */
+export const PARTIAL = 'manhattan-transfer'
+export const partial = JSON.parse(readFileSync(new URL(`../public/catalog/${PARTIAL}.json`, import.meta.url), 'utf8')) as typeof alice
+export const PARTIAL_DURATIONS: (number | null)[] = partial.chapters.map((_, i) => (i === 0 || i === partial.chapters.length - 1 ? 300 : i === 1 ? 3 : null))
+
 /** Silent 8 kHz 8-bit mono WAV of `seconds`. */
 export function wav(seconds: number): Buffer {
   const n = seconds * 8000
@@ -74,6 +82,8 @@ export interface HfOptions {
   noTimings?: Set<number>
   /** Redirect chapter audio here instead (Chromium only: a streaming test server) */
   audioUrl?: string
+  /** Also publish PARTIAL (PARTIAL_DURATIONS, no timings) */
+  partial?: boolean
 }
 
 export interface HfStub {
@@ -113,13 +123,19 @@ export async function stubHuggingFace(context: BrowserContext, baseURL: string, 
     stub.requests.push(path)
     if (stub.offline) return route.abort('internetdisconnected')
     if (path === 'manifest.json') {
-      return route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ af_heart: { [SLUG]: durations } }) })
+      const books = { [SLUG]: durations, ...(o.partial && { [PARTIAL]: PARTIAL_DURATIONS }) }
+      return route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ af_heart: books }) })
     }
     if (o.delayMs) await new Promise(r => setTimeout(r, o.delayMs))
     if (stub.offline) return route.abort('internetdisconnected')
     let m = /^af_heart\/alice-in-wonderland\/(\d+)\.timings\.json$/.exec(path)
     if (m && durations[+m[1]] != null && !o.noTimings?.has(+m[1])) {
       return route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ v: 1, segments: timings(alice.chapters[+m[1]].content) }) })
+    }
+    m = /^af_heart\/manhattan-transfer\/(\d+)\.m4a$/.exec(path)
+    if (m && o.partial && PARTIAL_DURATIONS[+m[1]] != null) {
+      if (o.inline) return route.fulfill({ headers: cors, contentType: 'audio/wav', body: SMALL_WAV })
+      return fulfillRange(route, +m[1] === 1 ? SHORT_WAV : LONG_WAV)
     }
     m = /^af_heart\/alice-in-wonderland\/(\d+)\.m4a$/.exec(path)
     if (m && durations[+m[1]] != null) {
@@ -216,12 +232,12 @@ export async function openReaderMore(page: Page) {
   if (await more.isVisible()) await more.click()
 }
 
-/** Open the reader at chapter `idx` (sidebar on wide screens, chapter drawer on phones). */
-export async function openChapter(page: Page, idx: number) {
+/** Open the reader at chapter `idx` of `book` (sidebar on wide screens, chapter drawer on phones). */
+export async function openChapter(page: Page, idx: number, book = alice) {
   const aside = page.locator('aside button').nth(idx)
   if (await aside.isVisible()) return aside.click()
   await page.locator('header').getByRole('button', { name: /^Chapters: chapter / }).click()
-  await page.getByRole('button', { name: alice.chapters[idx].title, exact: true }).click()
+  await page.getByRole('button', { name: book.chapters[idx].title, exact: true }).click()
 }
 
 /** Previous/Next chapter: the bar's buttons, or the lock-screen action where the bar hides them. */

@@ -100,8 +100,10 @@ export function AudioPlayer() {
                 <button
                   key={ch.id}
                   onClick={() => setChapter(i)}
+                  // A partly narrated book: only its narrated chapters can be played (books#31)
+                  disabled={chapterSeconds(manifest, book.slug, i) === null}
                   aria-current={i === chapterIdx ? 'true' : undefined}
-                  className={`min-w-[40px] h-[40px] px-2 text-sm rounded transition ${
+                  className={`min-w-[40px] h-[40px] px-2 text-sm rounded transition disabled:opacity-40 disabled:cursor-not-allowed ${
                     i === chapterIdx
                       ? 'bg-accent text-btn-text font-semibold'
                       : 'bg-surface-hover text-text-muted hover:text-text'

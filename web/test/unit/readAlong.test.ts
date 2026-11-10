@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  loadTimings, positionByProportion, positionFromTimings, sentenceRanges, timeAtChar, timeForChar,
+  loadTimings, positionFromTimings, sentenceRanges, timeAtChar, timeForChar,
   type CharRange, type TimingSegment,
 } from '../../src/hooks/readAlong'
 
@@ -122,26 +122,6 @@ describe('timeAtChar / timeForChar', () => {
     expect(timeForChar(text, null, text.length / 2, 600)).toBeCloseTo(300, 6)
     expect(timeForChar('', null, 0, 600)).toBe(0)
     expect(timeForChar(text, segs, segs[3][0], 600)).toBeCloseTo(segs[3][2], 6)
-  })
-})
-
-describe('positionByProportion', () => {
-  const ranges = sentenceRanges(text)
-
-  it('needs sentences and a duration', () => {
-    expect(positionByProportion(text, [], 1, 100)).toBeNull()
-    expect(positionByProportion(text, ranges, 1, 0)).toBeNull()
-    expect(positionByProportion(text, ranges, 1, NaN)).toBeNull()
-  })
-
-  it('maps time to the sentence at the same share of the text, clamped', () => {
-    expect(positionByProportion(text, ranges, 0, 600)).toEqual(ranges[0])
-    expect(positionByProportion(text, ranges, -3, 600)).toEqual(ranges[0])
-    expect(positionByProportion(text, ranges, 600, 600)).toEqual(ranges.at(-1))
-    expect(positionByProportion(text, ranges, 9999, 600)).toEqual(ranges.at(-1))
-    const mid = positionByProportion(text, ranges, 300, 600)!
-    expect(mid[0]).toBeLessThanOrEqual(text.length / 2)
-    expect(ranges[ranges.indexOf(mid) + 1][0]).toBeGreaterThan(text.length / 2)
   })
 })
 
