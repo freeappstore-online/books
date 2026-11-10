@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useSyncExternalStore, type ReactNode } from 'react'
-import { getNarrationTime, playNarration, primeNarration, seekNarration, type Narration } from './narration'
-import { chapterSeconds, getLoadedManifest, isNarrated, loadPreparedManifest, preparedUrl, type PreparedManifest } from './preparedAudio'
+import {
+  getNarrationTime, narrationIntroPlaying, playNarration, primeNarration, releaseNarration, seekNarration, setVolumeBoost as setNarrationBoost,
+  type Narration,
+} from './narration'
+import {
+  chapterSeconds, getLoadedManifest, getManifestExtras, isNarrated, loadPreparedManifest, preparedUrl, titleSeconds,
+  type PreparedManifest,
+} from './preparedAudio'
+import { getChapterPause, getContinueChapters, getReadTitles } from './usePreferences'
 import { playableManifest } from './offlineBooks'
 import {
   loadRate, saveRate, loadHistory, saveHistory, loadPosition, savePosition, saveSleepChoice,
@@ -69,6 +76,8 @@ interface AudioPlayerState {
   extendSleepTimer: (minutes: number) => void
   cancelSleepTimer: () => void
   setRate: (rate: number) => void
+  /** Volume boost on or off (books#37); call it in the click */
+  setVolumeBoost: (on: boolean) => void
   /** Read-along position, outside React state so it can change many times a second. */
   subscribeReadAlong: (listener: () => void) => () => void
   getReadAlong: () => ReadAlongPosition | null
@@ -172,8 +181,14 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     // currentTime has no change event finer than timeupdate (4 Hz): read it each frame.
     // setReadAlong only notifies when the word or sentence changes.
     const tick = () => {
+      if (gen !== genRef.current) return
+      // Read-along starts with the chapter, after its pause and spoken title (books#37)
+      if (narrationIntroPlaying()) {
+        requestAnimationFrame(tick)
+        return
+      }
       // A chapter without timings plays without read-along: a guessed highlight drifts (books#31)
-      if (gen !== genRef.current || audio.ended || track.timings === null) return
+      if (audio.ended || track.timings === null) return
       if (audio.readyState > 0 && !audio.seeking && track.timings) {
         setReadAlong({ chapterIdx: idx, ...positionFromTimings(text, track.timings, audio.currentTime) })
       }
@@ -189,8 +204,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
    * Play chapter `idx` of the current book, from where it was stopped or from
    * the word at `charOffset`. Chapters without narration are passed over in
    * the direction of travel; when none is left that way, playback stops.
+   * `advance`: the previous chapter just ended (the pause between chapters).
    */
-  const startPlayback = useCallback(async (start: number, charOffset?: number, dir: 1 | -1 = 1) => {
+  const startPlayback = useCallback(async (start: number, charOffset?: number, dir: 1 | -1 = 1, advance = false) => {
     const b = bookRef.current
     if (!b || start < 0 || start >= b.chapters.length) return
     const gen = halt()
@@ -208,6 +224,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const idx = narratedFrom(manifest, b, start, dir)
     if (idx < 0) {
       halt()
+      releaseNarration()
       setPlaying(false)
       if (!navigator.onLine) setError("You're offline, and the rest of this book isn't saved on this device.")
       return
@@ -233,6 +250,12 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         ? "This chapter couldn't be played. Press Play to try again."
         : "Connection lost. Press Play when you're back online.")
     }
+    // From the chapter's start: the pause (auto-advance only) and its spoken title first (books#37)
+    const before = {
+      pause: advance ? getChapterPause() : 0,
+      title: charOffset === undefined && getReadTitles() && titleSeconds(getManifestExtras(), b.slug, idx) !== null,
+      seconds,
+    }
     try {
       const narration = await playNarration(b.slug, idx, rateRef.current, {
         onPlaying: () => {
@@ -244,7 +267,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         // Headphones unplugged, a call, another app: the browser paused it
         onPaused: () => { if (gen === genRef.current) { halt(); setPlaying(false) } },
         onError: fail,
-      }, controller.signal)
+      }, controller.signal, before)
       // Halted (pause, another chapter) while loading
       if (gen !== genRef.current) {
         narration.stop()
@@ -258,15 +281,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [halt, followNarration])
 
-  /** Chapter `idx` finished: play the next one, or stop at the end of the book. */
+  /**
+   * Chapter `idx` finished: play the next one, or stop at the end of the book.
+   * The sleep timer's "end of chapter" and "Continue to the next chapter" off stop here.
+   */
   const finishChapter = useCallback((idx: number) => {
     const b = bookRef.current
-    if (sleepTimerRef.current?.choice === 'chapter') {
-      // Sleep timer: stop here and resume with the next chapter
+    const sleeping = sleepTimerRef.current?.choice === 'chapter'
+    if (sleeping || !getContinueChapters()) {
+      // Stop here and resume with the next chapter
       halt()
       setPlaying(false)
-      setSleepTimer(null)
-      volumeRef.current = 1
+      if (sleeping) {
+        setSleepTimer(null)
+        volumeRef.current = 1
+      }
       if (b && idx + 1 < b.chapters.length) {
         setChapterIdx(idx + 1)
         chapterIdxRef.current = idx + 1
@@ -275,7 +304,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     if (b && idx + 1 < b.chapters.length) {
-      startPlayback(idx + 1)
+      startPlayback(idx + 1, undefined, 1, true)
     } else {
       halt()
       setPlaying(false)
@@ -313,7 +342,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     if (!manifest || !isNarrated(playableManifest(manifest), newBook.slug)) return
     const track = trackRef.current
     if (charOffset !== undefined && bookRef.current?.slug === newBook.slug && track?.idx === startChapter
-      && track.audio.readyState > 0 && track.timings !== undefined) {
+      && !narrationIntroPlaying() && track.audio.readyState > 0 && track.timings !== undefined) {
       track.audio.currentTime = timeForChar(track.text, track.timings, charOffset, track.audio.duration)
       return
     }
@@ -331,6 +360,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   const pause = useCallback(() => {
     halt()
+    releaseNarration()
     setPlaying(false)
     setError(null)
   }, [halt])
@@ -487,13 +517,18 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     narrationRef.current?.setRate(r)
   }, [])
 
+  const setVolumeBoost = useCallback((on: boolean) => {
+    // The chapter playing was loaded without CORS: Web Audio hears it only once loaded again
+    if (setNarrationBoost(on) && playing) startPlayback(chapterIdxRef.current)
+  }, [playing, startPlayback])
+
   return (
     <AudioPlayerContext.Provider value={{
       book, playing, loading, error, chapterIdx, rate, history,
       loadAndPlay, play, pause,
       setChapter: setChapterAndPlay, nextChapter, prevChapter, skip, seek,
       sleepTimer, startSleepTimer, extendSleepTimer, cancelSleepTimer,
-      setRate, subscribeReadAlong, getReadAlong,
+      setRate, setVolumeBoost, subscribeReadAlong, getReadAlong,
     }}>
       {children}
     </AudioPlayerContext.Provider>

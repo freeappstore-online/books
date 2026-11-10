@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   BOOK_TEXT, UI_TEXT, getReaderFontSize, getUiScale, setReaderFontSize, setUiScale,
+  getChapterPause, getContinueChapters, getReadTitles, getVolumeBoost,
+  setChapterPause, setContinueChapters, setReadTitles, setVolumeBoostPref,
 } from '../../src/hooks/usePreferences'
 
 const rootFontSize = () => (document.documentElement.style as { fontSize?: string }).fontSize
@@ -51,5 +53,36 @@ describe('text size preferences', () => {
     setUiScale(90)
     window.removeEventListener('bp-preferences-changed', count)
     expect(changes).toBe(2)
+  })
+})
+
+describe('listening preferences (books#37)', () => {
+  it('default: titles read, 1.5 s pause, continue, no boost', () => {
+    expect(getReadTitles()).toBe(true)
+    expect(getChapterPause()).toBe(1.5)
+    expect(getContinueChapters()).toBe(true)
+    expect(getVolumeBoost()).toBe(false)
+  })
+
+  it('keep what is set, including off', () => {
+    setReadTitles(false)
+    setChapterPause(0)
+    setContinueChapters(false)
+    setVolumeBoostPref(true)
+    expect(getReadTitles()).toBe(false)
+    expect(getChapterPause()).toBe(0)
+    expect(getContinueChapters()).toBe(false)
+    expect(getVolumeBoost()).toBe(true)
+    setChapterPause(5)
+    expect(getChapterPause()).toBe(5)
+  })
+
+  it('a pause that is not offered, or a bad flag, reads as the default', () => {
+    localStorage.setItem('bp-chapter-pause', '2')
+    localStorage.setItem('bp-read-titles', 'maybe')
+    expect(getChapterPause()).toBe(1.5)
+    expect(getReadTitles()).toBe(true)
+    localStorage.setItem('bp-chapter-pause', '')
+    expect(getChapterPause()).toBe(1.5)
   })
 })

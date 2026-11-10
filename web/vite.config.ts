@@ -6,7 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { pwaOptions } from '@freeappstore/sdk/pwa-config'
 import { CATALOG } from './src/data/catalog'
 import { COVERS } from './src/data/covers'
-import { MANIFEST_URL, preparedCount, type PreparedManifest } from './src/hooks/preparedAudio'
+import { MANIFEST_URL, parseManifest, preparedCount } from './src/hooks/preparedAudio'
 import { bookPage, openingParagraphs, sitemap } from './src/seo/bookPages'
 
 // Book covers (public/covers/*.webp) stay out of the precache; they are cached as they are shown.
@@ -27,9 +27,9 @@ function bookPages(): Plugin {
       const shell = bundle['index.html']
       if (shell?.type !== 'asset') throw new Error('book pages: no index.html in the build')
       // Unreachable narration server: the pages just leave out the audiobook line
-      const manifest: PreparedManifest = await fetch(MANIFEST_URL, { signal: AbortSignal.timeout(20_000) })
+      const { manifest } = parseManifest(await fetch(MANIFEST_URL, { signal: AbortSignal.timeout(20_000) })
         .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-        .catch(e => { this.warn(`narration manifest: ${e}`); return {} })
+        .catch(e => { this.warn(`narration manifest: ${e}`); return {} }))
       for (const book of CATALOG) {
         const { chapters } = JSON.parse(readFileSync(`public${book.contentPath}`, 'utf8')) as { chapters: { title: string; content: string }[] }
         this.emitFile({
@@ -53,7 +53,7 @@ export default defineConfig({
     workbox: {
       // The book pages are for search engines; the installed app opens books from the shell
       globIgnores: ['read/**'],
-      // silence.wav primes the narration <audio> on iOS; it must load offline too (books#7)
+      // silence.wav primes the narration <audio> on iOS and is the pause between chapters; it must load offline too (books#7, #37)
       globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2,wav}'],
       runtimeCaching: [...(pwaOptions().workbox.runtimeCaching ?? []), coverCache],
     },

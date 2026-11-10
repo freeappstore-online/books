@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { preparedCount, usePreparedManifest, VOICE } from '../hooks/preparedAudio'
+import { getManifestExtras, preparedCount, usePreparedManifest, VOICE } from '../hooks/preparedAudio'
 import {
   checkSavedText, estimateAudioBytes, formatBytes, saveBook, updateReason, useOfflineBooks, useOnline,
 } from '../hooks/offlineBooks'
@@ -83,7 +83,7 @@ function SaveOfflineControl({ slug }: { slug: string }) {
   }
 
   if (!online) return null
-  const estimate = estimateAudioBytes(manifest, slug, VOICE)
+  const estimate = estimateAudioBytes(manifest, slug, VOICE, getManifestExtras())
   return (
     <button
       onClick={() => saveBook(slug, narrated > 0 ? VOICE : null)}

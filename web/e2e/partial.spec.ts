@@ -78,3 +78,18 @@ test('saves offline with a size estimate from its narrated chapters, without tim
   expect(files.filter(f => f.endsWith('.m4a'))).toHaveLength(3)
   expect(files.filter(f => f.endsWith('.timings.json'))).toEqual([])
 })
+
+test('with the manifest\'s extras, asks for no timings it lacks: no 404s in the console (books#37)', async ({ context, baseURL, page }) => {
+  const hf = await stubHuggingFace(context, baseURL!, { partial: true, extras: { [PARTIAL]: {} } })
+  const errors: string[] = []
+  // (The stub aborts every other host, analytics and fonts: those fail without a status)
+  page.on('console', m => { if (m.type() === 'error' && /404|not found/i.test(m.text())) errors.push(m.text()) })
+  await page.goto(`/read/${PARTIAL}`)
+  await headerPlay(page).click()
+  await expectPlaying(page, 0, 1)
+  await trackButton(page, 'Next')
+  await expectPlaying(page, 1, 0)
+  await expectPlaying(page, LAST)
+  expect(hf.requests.filter(p => p.endsWith('.timings.json'))).toEqual([])
+  expect(errors).toEqual([])
+})

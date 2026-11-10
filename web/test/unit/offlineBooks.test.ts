@@ -12,15 +12,21 @@ const BASE = 'https://huggingface.co/datasets/serge-ivo/books-audio/resolve/main
 describe('offline size estimate', () => {
   it('is the narrated seconds at the measured AAC bitrate', () => {
     const seconds = real.af_heart[SLUG].reduce<number>((s, d) => s + (d ?? 0), 0)
-    expect(estimateAudioBytes(real, SLUG, 'af_heart')).toBeCloseTo(seconds * 5200, 3)
+    expect(estimateAudioBytes(real, SLUG, 'af_heart', null)).toBeCloseTo(seconds * 5200, 3)
     // Alice is about 8150 s: roughly 41 MB, what the Save offline button shows
-    expect(formatBytes(estimateAudioBytes(real, SLUG, 'af_heart'))).toBe('41 MB')
+    expect(formatBytes(estimateAudioBytes(real, SLUG, 'af_heart', null))).toBe('41 MB')
   })
 
   it('skips chapters without narration and unknown books or voices', () => {
-    expect(estimateAudioBytes({ af_heart: { [SLUG]: [10, null, 5] } }, SLUG, 'af_heart')).toBe(15 * 5200)
-    expect(estimateAudioBytes(real, 'dracula', 'af_heart')).toBe(0)
-    expect(estimateAudioBytes(real, SLUG, 'bf_emma')).toBe(0)
+    expect(estimateAudioBytes({ af_heart: { [SLUG]: [10, null, 5] } }, SLUG, 'af_heart', null)).toBe(15 * 5200)
+    expect(estimateAudioBytes(real, 'dracula', 'af_heart', null)).toBe(0)
+    expect(estimateAudioBytes(real, SLUG, 'bf_emma', null)).toBe(0)
+  })
+
+  it('counts the spoken chapter titles of narrated chapters (books#37)', () => {
+    const extras = { af_heart: { [SLUG]: { titles: [2, 3, 4] } } }
+    // Chapter 2 has a title clip but no narration: not saved, not counted
+    expect(estimateAudioBytes({ af_heart: { [SLUG]: [10, null, 5] } }, SLUG, 'af_heart', extras)).toBe((10 + 2 + 5 + 4) * 5200)
   })
 })
 
@@ -46,12 +52,14 @@ describe('saved books', () => {
       [`${BASE}/0.m4a`]: 3_300_000,
       [`${BASE}/0.timings.json`]: 2_000,
       [`${BASE}/1.m4a`]: 3_100_000,
+      [`${BASE}/1.title.m4a`]: 10_000,
     },
     savedAt: 1,
   }
 
   it('sum their file sizes and count saved narration chapters', () => {
-    expect(savedBytes(book)).toBe(6_522_000)
+    expect(savedBytes(book)).toBe(6_532_000)
+    // A spoken title isn't a chapter
     expect(savedAudioChapters(book)).toBe(2)
     expect(savedAudioChapters({ voice: null, files: {}, savedAt: 1 })).toBe(0)
   })

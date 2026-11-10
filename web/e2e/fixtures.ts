@@ -23,10 +23,11 @@ export const PARTIAL = 'manhattan-transfer'
 export const partial = JSON.parse(readFileSync(new URL(`../public/catalog/${PARTIAL}.json`, import.meta.url), 'utf8')) as typeof alice
 export const PARTIAL_DURATIONS: (number | null)[] = partial.chapters.map((_, i) => (i === 0 || i === partial.chapters.length - 1 ? 300 : i === 1 ? 3 : null))
 
-/** Silent 8 kHz 8-bit mono WAV of `seconds`. */
-export function wav(seconds: number): Buffer {
-  const n = seconds * 8000
+/** Silent 8 kHz 8-bit mono WAV of `seconds`; with `tone`, a quiet 500 Hz square wave instead. */
+export function wav(seconds: number, tone = false): Buffer {
+  const n = Math.round(seconds * 8000)
   const b = Buffer.alloc(44 + n, 128)
+  if (tone) for (let i = 0; i < n; i++) b[44 + i] = i % 16 < 8 ? 112 : 144
   b.write('RIFF', 0); b.writeUInt32LE(36 + n, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16)
   b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(8000, 24); b.writeUInt32LE(8000, 28)
   b.writeUInt16LE(1, 32); b.writeUInt16LE(8, 34); b.write('data', 36); b.writeUInt32LE(n, 40)
@@ -35,8 +36,13 @@ export function wav(seconds: number): Buffer {
 
 const LONG_SECONDS = 300
 const SHORT_SECONDS = 3
-const LONG_WAV = wav(LONG_SECONDS)
-const SHORT_WAV = wav(SHORT_SECONDS)
+const wavs = new Map<string, Buffer>()
+/** The audio served for `seconds` of narration (made once) */
+const wavOf = (seconds: number, tone = false) => {
+  const key = `${seconds}${tone}`
+  if (!wavs.has(key)) wavs.set(key, wav(seconds, tone))
+  return wavs.get(key)!
+}
 
 /** Chapter 2 is 3 s long (auto-advance, sleep at end of chapter); the others 300 s. */
 export const SHORT_CH = 1
@@ -84,6 +90,14 @@ export interface HfOptions {
   audioUrl?: string
   /** Also publish PARTIAL (PARTIAL_DURATIONS, no timings) */
   partial?: boolean
+  /**
+   * The manifest's "extras" (books#37), by slug: which books have timings and their
+   * chapters' spoken titles (seconds), served as `<i>.title.m4a`. The manifest then
+   * also carries a top-level key the app doesn't know.
+   */
+  extras?: Record<string, { timings?: boolean; titles?: (number | null)[] }>
+  /** Chapter audio is a tone, not silence (to hear it through Web Audio) */
+  tone?: boolean
 }
 
 export interface HfStub {
@@ -124,7 +138,8 @@ export async function stubHuggingFace(context: BrowserContext, baseURL: string, 
     if (stub.offline) return route.abort('internetdisconnected')
     if (path === 'manifest.json') {
       const books = { [SLUG]: durations, ...(o.partial && { [PARTIAL]: PARTIAL_DURATIONS }) }
-      return route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ af_heart: books }) })
+      const extras = o.extras && { extras: { af_heart: o.extras }, generated: { by: 'a later pipeline' } }
+      return route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ af_heart: books, ...extras }) })
     }
     if (o.delayMs) await new Promise(r => setTimeout(r, o.delayMs))
     if (stub.offline) return route.abort('internetdisconnected')
@@ -132,10 +147,13 @@ export async function stubHuggingFace(context: BrowserContext, baseURL: string, 
     if (m && durations[+m[1]] != null && !o.noTimings?.has(+m[1])) {
       return route.fulfill({ headers: cors, contentType: 'application/json', body: JSON.stringify({ v: 1, segments: timings(alice.chapters[+m[1]].content) }) })
     }
+    m = /^af_heart\/([a-z-]+)\/(\d+)\.title\.m4a$/.exec(path)
+    const title = m && o.extras?.[m[1]]?.titles?.[+m[2]]
+    if (title) return fulfillRange(route, wavOf(title))
     m = /^af_heart\/manhattan-transfer\/(\d+)\.m4a$/.exec(path)
     if (m && o.partial && PARTIAL_DURATIONS[+m[1]] != null) {
       if (o.inline) return route.fulfill({ headers: cors, contentType: 'audio/wav', body: SMALL_WAV })
-      return fulfillRange(route, +m[1] === 1 ? SHORT_WAV : LONG_WAV)
+      return fulfillRange(route, wavOf(PARTIAL_DURATIONS[+m[1]]!))
     }
     m = /^af_heart\/alice-in-wonderland\/(\d+)\.m4a$/.exec(path)
     if (m && durations[+m[1]] != null) {
@@ -146,7 +164,7 @@ export async function stubHuggingFace(context: BrowserContext, baseURL: string, 
       }
       if (o.inline) return route.fulfill({ headers: cors, contentType: 'audio/wav', body: SMALL_WAV })
       if (o.audioUrl) return route.fulfill({ status: 302, headers: { ...cors, location: `${o.audioUrl}?${idx}` } })
-      return fulfillRange(route, idx === SHORT_CH ? SHORT_WAV : LONG_WAV)
+      return fulfillRange(route, wavOf(durations[idx]!, o.tone))
     }
     return route.fulfill({ status: 404, headers: cors, body: '' })
   })
@@ -156,12 +174,27 @@ export async function stubHuggingFace(context: BrowserContext, baseURL: string, 
 export const test = base.extend({
   context: async ({ context }, use) => {
     await context.addInitScript(() => {
-      const w = window as unknown as { __audios: HTMLAudioElement[]; __ms: Record<string, MediaSessionActionHandler | null>; Audio: typeof Audio }
-      // narration.ts creates its one element with new Audio(): keep a handle on it
+      const w = window as unknown as {
+        __audios: HTMLAudioElement[]; __ms: Record<string, MediaSessionActionHandler | null>; Audio: typeof Audio
+        __log: { type: string; src: string; at: number }[]; __ctxs: AudioContext[]; AudioContext: typeof AudioContext
+      }
+      // narration.ts creates its one element with new Audio(): keep a handle on it, and log what it plays
       const A = w.Audio
       w.__audios = []
-      w.Audio = function (src?: string) { const a = new A(src); w.__audios.push(a); return a } as unknown as typeof Audio
+      w.__log = []
+      w.Audio = function (src?: string) {
+        const a = new A(src)
+        w.__audios.push(a)
+        for (const type of ['playing', 'ended']) a.addEventListener(type, () => w.__log.push({ type, src: a.currentSrc || a.src, at: performance.now() }))
+        return a
+      } as unknown as typeof Audio
       w.Audio.prototype = A.prototype
+      // The volume boost's AudioContext, if one is made
+      w.__ctxs = []
+      if (typeof AudioContext !== 'undefined') {
+        const C = AudioContext
+        w.AudioContext = class extends C { constructor(o?: AudioContextOptions) { super(o); w.__ctxs.push(this) } } as typeof AudioContext
+      }
       // Lock-screen actions, to press them where the bar hides Previous/Next (phones)
       w.__ms = {}
       if (typeof MediaSession !== 'undefined') {

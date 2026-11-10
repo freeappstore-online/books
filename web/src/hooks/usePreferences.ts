@@ -17,8 +17,8 @@ function read(key: string, range: typeof BOOK_TEXT): number {
   return v ? clamp(v, range) : range.default
 }
 
-function write(key: string, value: number) {
-  writeLocal(key, String(value))
+function write(key: string, value: number | boolean) {
+  writeLocal(key, typeof value === 'boolean' ? (value ? '1' : '0') : String(value))
   window.dispatchEvent(new Event(CHANGED_EVENT))
 }
 
@@ -36,8 +36,41 @@ export function applyUiScale(scale: number) {
   document.documentElement.style.fontSize = `${scale}%`
 }
 
+// ── Listening (books#37) ──
+const TITLES_KEY = 'bp-read-titles'
+const PAUSE_KEY = 'bp-chapter-pause'
+const CONTINUE_KEY = 'bp-continue-chapters'
+const BOOST_KEY = 'bp-volume-boost'
+
+/** Seconds of silence between chapters on auto-advance; 0 is off. */
+export const CHAPTER_PAUSES = [0, 1.5, 3, 5]
+const DEFAULT_PAUSE = 1.5
+
+function readFlag(key: string, fallback: boolean): boolean {
+  const v = readLocal(key)
+  return v === '1' ? true : v === '0' ? false : fallback
+}
+
+/** Play a chapter's spoken title before it, when one is published. */
+export function getReadTitles(): boolean { return readFlag(TITLES_KEY, true) }
+export function setReadTitles(on: boolean) { write(TITLES_KEY, on) }
+
+export function getChapterPause(): number {
+  const v = Number(readLocal(PAUSE_KEY) || NaN)
+  return CHAPTER_PAUSES.includes(v) ? v : DEFAULT_PAUSE
+}
+export function setChapterPause(seconds: number) { write(PAUSE_KEY, seconds) }
+
+/** Off: stop at the end of each chapter. */
+export function getContinueChapters(): boolean { return readFlag(CONTINUE_KEY, true) }
+export function setContinueChapters(on: boolean) { write(CONTINUE_KEY, on) }
+
+/** Louder playback; applied by narration.ts, set through the player (useAudioPlayer). */
+export function getVolumeBoost(): boolean { return readFlag(BOOST_KEY, false) }
+export function setVolumeBoostPref(on: boolean) { write(BOOST_KEY, on) }
+
 /** Current value of a preference; updates when it changes anywhere in the app. */
-function usePreference(get: () => number): number {
+function usePreference<T>(get: () => T): T {
   const [value, setValue] = useState(get)
   useEffect(() => {
     const update = () => setValue(get())
@@ -53,3 +86,7 @@ function usePreference(get: () => number): number {
 
 export const useReaderFontSize = () => usePreference(getReaderFontSize)
 export const useUiScale = () => usePreference(getUiScale)
+export const useReadTitles = () => usePreference(getReadTitles)
+export const useChapterPause = () => usePreference(getChapterPause)
+export const useContinueChapters = () => usePreference(getContinueChapters)
+export const useVolumeBoost = () => usePreference(getVolumeBoost)

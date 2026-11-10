@@ -2,8 +2,8 @@
  * Books saved for offline reading and listening (books#7).
  *
  * Files live in an app-owned Cache Storage bucket, keyed by the URL they came
- * from: the book's text, every prepared narration chapter (.m4a) and its
- * word timings (.timings.json, when published), plus a copy of the narration
+ * from: the book's text, every prepared narration chapter (.m4a) with its
+ * word timings (.timings.json) and spoken title (.title.m4a) when published, plus a copy of the narration
  * manifest so the app knows what's narrated while offline. Which books are
  * saved, and how large each file is, is kept in localStorage.
  */
@@ -12,7 +12,8 @@ import { CATALOG } from '../data/catalog'
 import { coverUrl } from '../components/BookCover'
 import type { AudioChapter } from './useAudioPlayer'
 import {
-  MANIFEST_URL, preparedCount, preparedUrl, preparedTimingsUrl, usePreparedManifest, type PreparedManifest,
+  MANIFEST_URL, getManifestExtras, hasTimings, parseManifest, preparedCount, preparedTitleUrl, preparedUrl,
+  preparedTimingsUrl, titleSeconds, usePreparedManifest, type ManifestExtras, type PreparedManifest,
 } from './preparedAudio'
 
 const CACHE = 'books-offline-v1'
@@ -106,9 +107,11 @@ export function savedBytes(book: SavedBook): number {
   return Object.values(book.files).reduce((sum, n) => sum + n, 0)
 }
 
+const isTitle = (url: string) => url.endsWith('.title.m4a')
+
 /** Narration chapters saved for this book. */
 export function savedAudioChapters(book: SavedBook): number {
-  return Object.keys(book.files).filter(url => url.endsWith('.m4a')).length
+  return Object.keys(book.files).filter(url => url.endsWith('.m4a') && !isTitle(url)).length
 }
 
 /** The saved copy of a URL, if this device has one. */
@@ -134,9 +137,10 @@ export async function fetchChapters(contentPath: string): Promise<AudioChapter[]
   return data.chapters.map((ch, i) => ({ id: `ch-${i}`, title: ch.title, content: ch.content }))
 }
 
-/** Estimated download size of a book's narration in this voice. */
-export function estimateAudioBytes(manifest: PreparedManifest, slug: string, voice: string): number {
-  const seconds = (manifest[voice]?.[slug] ?? []).reduce<number>((sum, d) => sum + (d ?? 0), 0)
+/** Estimated download size of a book's narration in this voice, with its chapters' spoken titles. */
+export function estimateAudioBytes(manifest: PreparedManifest, slug: string, voice: string, extras: ManifestExtras | null): number {
+  const durations = manifest[voice]?.[slug] ?? []
+  const seconds = durations.reduce<number>((sum, d, i) => sum + (d === null ? 0 : d + (titleSeconds(extras, slug, i, voice) ?? 0)), 0)
   return seconds * AUDIO_BYTES_PER_SECOND
 }
 
@@ -220,10 +224,10 @@ export function saveBook(slug: string, voice: string | null) {
       // Text-only saves do not depend on the availability of the audio host.
       const manifestRes = voice ? await fetch(MANIFEST_URL, { signal }) : null
       if (manifestRes && !manifestRes.ok) throw new Error(`Narration manifest: ${manifestRes.status}`)
-      const manifest: PreparedManifest = manifestRes ? await manifestRes.clone().json() : {}
+      const { manifest, extras } = parseManifest(manifestRes ? await manifestRes.clone().json() : {})
       const durations = (voice && manifest[voice]?.[slug]) || []
       const narrated = durations.some(d => d != null)
-      total = (voice && estimateAudioBytes(manifest, slug, voice)) || 1
+      total = (voice && estimateAudioBytes(manifest, slug, voice, extras)) || 1
 
       // The text again only when it changed on the server (304 otherwise)
       const text = await store(textUrl, true, files[textUrl] && textVersion
@@ -240,9 +244,12 @@ export function saveBook(slug: string, voice: string | null) {
         const audio = preparedUrl(slug, i, voice!)
         if (files[audio]) done += files[audio]
         else await store(audio, true)
-        // Word timings sit next to each chapter, and may be published after it
+        // Word timings and the spoken title sit next to each chapter, and may be published after it
         const timings = preparedTimingsUrl(slug, i, voice!)
-        if (!files[timings]) await store(timings, false)
+        if (!files[timings] && hasTimings(extras, slug, voice!)) await store(timings, false)
+        const title = preparedTitleUrl(slug, i, voice!)
+        if (files[title]) done += files[title]
+        else if (titleSeconds(extras, slug, i, voice!) !== null) await store(title, false)
       }
       setSavedBook(slug, { voice: narrated ? voice : null, files, savedAt: Date.now(), format: SAVE_FORMAT, textVersion })
       delete textChanged[slug]
@@ -344,6 +351,9 @@ export function updateReason(slug: string, book: SavedBook, manifest: PreparedMa
   const newChapters = book.voice ? preparedCount(manifest, slug, book.voice) - savedAudioChapters(book) : 0
   if (newChapters > 0) return `${newChapters} new chapter${newChapters === 1 ? '' : 's'}`
   if (textChanged[slug]) return 'updated text'
+  const voice = book.voice
+  if (voice && (manifest[voice]?.[slug] ?? []).some((d, i) => d !== null
+    && titleSeconds(getManifestExtras(), slug, i, voice) !== null && !(preparedTitleUrl(slug, i, voice) in book.files))) return 'chapter titles'
   if ((book.format ?? 1) < SAVE_FORMAT) return book.voice ? 'read-along' : 'latest text'
   return null
 }

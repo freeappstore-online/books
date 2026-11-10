@@ -4,6 +4,7 @@ import {
   loadTimings, positionFromTimings, sentenceRanges, timeAtChar, timeForChar,
   type CharRange, type TimingSegment,
 } from '../../src/hooks/readAlong'
+import { loadPreparedManifest } from '../../src/hooks/preparedAudio'
 
 // The real Alice chapter 1 and its published timings (serge-ivo/books-audio af_heart/alice-in-wonderland/0.timings.json)
 const alice = JSON.parse(readFileSync(new URL('../../public/catalog/alice-in-wonderland.json', import.meta.url), 'utf8')) as { chapters: { content: string }[] }
@@ -144,6 +145,18 @@ describe('loadTimings', () => {
     expect(await loadTimings('retry-book', 1)).toBeNull()
     expect(await loadTimings('retry-book', 1)).toBeNull()
     expect(fetch).toHaveBeenCalledTimes(4)
+    vi.unstubAllGlobals()
+  })
+
+  // Last: the manifest stays loaded for the rest of the file
+  it('asks only for the timings of books the manifest says have them (books#37)', async () => {
+    const manifest = { af_heart: { 'with-timings': [5], 'without-timings': [5] }, extras: { af_heart: { 'with-timings': { timings: true } } } }
+    const fetch = vi.fn(async (url: string) => (url.endsWith('manifest.json') ? { ok: true, status: 200, json: async () => manifest } : ok))
+    vi.stubGlobal('fetch', fetch)
+    await loadPreparedManifest()
+    expect(await loadTimings('without-timings', 0)).toBeNull()
+    expect(await loadTimings('with-timings', 0)).toEqual([[0, 5, 0, 1]])
+    expect(fetch.mock.calls.map(([url]) => url.split('/').slice(-2).join('/'))).toEqual(['main/manifest.json', 'with-timings/0.timings.json'])
     vi.unstubAllGlobals()
   })
 })

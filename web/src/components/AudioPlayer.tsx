@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { CATALOG, readPath } from '../data/catalog'
 import { fetchChapters, usePlayableManifest } from '../hooks/offlineBooks'
 import { SleepButton, SpeedButton, formatTime } from './PlayerMenus'
+import { ListeningOptions } from './ListeningSettings'
 
 export function AudioPlayer() {
   const {
@@ -15,7 +16,7 @@ export function AudioPlayer() {
     setChapter, loadAndPlay,
   } = useAudioPlayer()
   const [expanded, setExpanded] = useState(false)
-  const [tab, setTab] = useState<'chapters' | 'history'>('chapters')
+  const [tab, setTab] = useState<'chapters' | 'history' | 'settings'>('chapters')
   const navigate = useNavigate()
   const manifest = usePreparedManifest()
   // Offline, Recent lists only books saved on this device (books#24)
@@ -72,7 +73,7 @@ export function AudioPlayer() {
         <div id="player-panel" className="border-b border-border px-4 py-3 max-w-4xl mx-auto max-h-64 overflow-y-auto">
           {/* Tabs */}
           <div className="flex gap-4 mb-3 border-b border-border">
-            {(['chapters', 'history'] as const).map(t => (
+            {(['chapters', 'history', 'settings'] as const).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -81,7 +82,7 @@ export function AudioPlayer() {
                   tab === t ? 'text-accent' : 'text-text-dim hover:text-text-muted'
                 }`}
               >
-                {t === 'chapters' ? `Chapters (${totalChapters})` : `Recent (${narratedHistory.length})`}
+                {t === 'chapters' ? `Chapters (${totalChapters})` : t === 'history' ? `Recent (${narratedHistory.length})` : 'Listening'}
               </button>
             ))}
           </div>
@@ -108,6 +109,9 @@ export function AudioPlayer() {
               ))}
             </div>
           )}
+
+          {/* Listening settings (books#37) */}
+          {tab === 'settings' && <div className="pb-1"><ListeningOptions /></div>}
 
           {/* Recently listened */}
           {tab === 'history' && (

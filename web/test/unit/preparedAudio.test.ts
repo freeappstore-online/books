@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  VOICE, chapterSeconds, isNarrated, preparedCount, preparedTimingsUrl, preparedUrl, type PreparedManifest,
+  VOICE, chapterSeconds, hasTimings, isNarrated, parseManifest, preparedCount, preparedTimingsUrl, preparedTitleUrl,
+  preparedUrl, titleSeconds, type PreparedManifest,
 } from '../../src/hooks/preparedAudio'
 
 // The real manifest.json of serge-ivo/books-audio (Alice only)
@@ -43,5 +44,46 @@ describe('preparedAudio', () => {
     const base = 'https://huggingface.co/datasets/serge-ivo/books-audio/resolve/main/af_heart/alice-in-wonderland'
     expect(preparedUrl(SLUG, 3)).toBe(`${base}/3.m4a`)
     expect(preparedTimingsUrl(SLUG, 3)).toBe(`${base}/3.timings.json`)
+    expect(preparedTitleUrl(SLUG, 3)).toBe(`${base}/3.title.m4a`)
+  })
+})
+
+describe('manifest contract (books#37)', () => {
+  const raw = {
+    [VOICE]: { [SLUG]: [10, null, 12], emma: [5] },
+    extras: { [VOICE]: { [SLUG]: { timings: true, titles: [2.1, null, 1.8] }, emma: { titles: [1] } } },
+    // Keys a later pipeline may add
+    generated: '2026-11-10',
+    stats: { books: 2 },
+  }
+
+  it('keeps the voices, separates the extras and ignores other top-level keys', () => {
+    const { manifest, extras } = parseManifest(raw)
+    expect(manifest).toEqual({ [VOICE]: raw[VOICE] })
+    expect(extras).toEqual(raw.extras)
+    expect(isNarrated(manifest, SLUG)).toBe(true)
+  })
+
+  it('a manifest without extras, or not an object, has none', () => {
+    expect(parseManifest({ [VOICE]: { [SLUG]: [1] } })).toEqual({ manifest: { [VOICE]: { [SLUG]: [1] } }, extras: null })
+    expect(parseManifest(null)).toEqual({ manifest: {}, extras: null })
+    expect(parseManifest([1])).toEqual({ manifest: {}, extras: null })
+  })
+
+  it('says which books have timings: unknown (yes) without extras', () => {
+    const { extras } = parseManifest(raw)
+    expect(hasTimings(extras, SLUG)).toBe(true)
+    expect(hasTimings(extras, 'emma')).toBe(false)
+    expect(hasTimings(extras, 'dracula')).toBe(false)
+    expect(hasTimings(null, 'emma')).toBe(true)
+  })
+
+  it('reads the title clip lengths', () => {
+    const { extras } = parseManifest(raw)
+    expect(titleSeconds(extras, SLUG, 0)).toBe(2.1)
+    expect(titleSeconds(extras, SLUG, 1)).toBeNull()
+    expect(titleSeconds(extras, SLUG, 7)).toBeNull()
+    expect(titleSeconds(extras, 'dracula', 0)).toBeNull()
+    expect(titleSeconds(null, SLUG, 0)).toBeNull()
   })
 })

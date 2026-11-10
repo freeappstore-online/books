@@ -5,7 +5,7 @@
  * the spoken word inside a sentence is estimated by spreading the sentence's
  * time over its words by syllable count.
  */
-import { preparedTimingsUrl } from './preparedAudio'
+import { getManifestExtras, hasTimings, preparedTimingsUrl } from './preparedAudio'
 import { fetchSavedOr } from './offlineBooks'
 
 /** Char range [start, end) in the chapter content. */
@@ -24,6 +24,8 @@ const timingsCache = new Map<string, Promise<TimingSegment[] | null>>()
 
 /** Sentence timings of a narrated chapter; null when it has none. */
 export function loadTimings(slug: string, chapterIdx: number): Promise<TimingSegment[] | null> {
+  // The manifest says which books have timings: no request (and no console 404) for the others
+  if (!hasTimings(getManifestExtras(), slug)) return Promise.resolve(null)
   const url = preparedTimingsUrl(slug, chapterIdx)
   let p = timingsCache.get(url)
   if (!p) {
