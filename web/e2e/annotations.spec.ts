@@ -1,5 +1,5 @@
 // Bookmarks, highlights and the reading position (books#11, books#26).
-import { test, expect, stubHuggingFace, alice, audio, expectPlaying, headerPlay, marks, selectText, SLUG } from './fixtures'
+import { test, expect, stubHuggingFace, alice, audio, bar, expectPlaying, headerPlay, marks, selectText, SLUG } from './fixtures'
 import type { Page } from '@playwright/test'
 
 const PROGRESS = { [SLUG]: { chapterIdx: 5, totalChapters: 12, scroll: 0.5, fraction: 0.45, lastRead: 1 } }
@@ -134,4 +134,22 @@ test('excerpt fallback keeps the reading position and shows or makes no annotati
   await page.getByRole('button', { name: 'Bookmarks and notes' }).click()
   await expect(page.getByRole('button', { name: /Bookmark this place/ })).toBeDisabled()
   expect((await stored(page, 'bp-annotations'))[SLUG]).toHaveLength(1)
+})
+
+test('excerpt fallback of a narrated book is reading-only: no Play, and no click or key starts narration (books#35)', async ({ context, page }) => {
+  await context.route('**/catalog/alice-in-wonderland.json', route => route.abort())
+  await page.goto(`/read/${SLUG}`)
+  await expect(page.locator('article h2')).toHaveText('Excerpt')
+  // The manifest has loaded by now, so the full book would show Play
+  await page.waitForLoadState('networkidle')
+  await expect(headerPlay(page)).toHaveCount(0)
+  await expect(page.locator('[data-chapter-text]')).not.toHaveAttribute('title', /listening/)
+
+  await page.locator('[data-chapter-text]').click()
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.press(' ')
+  await page.keyboard.press('k')
+  await page.waitForTimeout(500)
+  expect((await audio(page))?.paused ?? true, 'nothing plays').toBe(true)
+  await expect(bar(page)).toHaveCount(0)
 })

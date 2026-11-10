@@ -214,11 +214,12 @@ export function ReaderPage() {
   // Offline, only if saved on this device (books#24).
   const narrated = Boolean(slug && manifest && isNarrated(playableManifest(manifest, online), slug))
   const listenOffline = Boolean(slug && manifest && !online && !narrated && isNarrated(manifest, slug))
-  // A partly narrated book plays only its narrated chapters (books#31)
-  const chapterNarrated = Boolean(narrated && chapterSeconds(manifest!, slug!, visibleChapterIdx) !== null)
+  // A partly narrated book plays only its narrated chapters (books#31). The excerpt fallback is
+  // reading-only: the narration is the whole book's, not the excerpt's (books#35)
+  const chapterNarrated = Boolean(narrated && !excerpt && chapterSeconds(manifest!, slug!, visibleChapterIdx) !== null)
   const audioBook = useMemo<AudioBook | null>(
-    () => (slug && catalogBook ? { slug, title: catalogBook.title, author: catalogBook.author, chapters } : null),
-    [slug, catalogBook, chapters],
+    () => (slug && catalogBook && !excerpt ? { slug, title: catalogBook.title, author: catalogBook.author, chapters } : null),
+    [slug, catalogBook, excerpt, chapters],
   )
 
   const handleTextClick = useCallback((e: React.MouseEvent) => {

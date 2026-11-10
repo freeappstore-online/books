@@ -129,7 +129,7 @@ export function AudioPlayer() {
                       <div className="text-xs text-text-dim">{h.author} · Ch {h.chapterIdx + 1}</div>
                     </div>
                     {book.slug === h.slug && playing && (
-                      <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
                     )}
                   </button>
                 ))
