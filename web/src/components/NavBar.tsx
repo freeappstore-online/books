@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useOnline } from '../hooks/offlineBooks'
+import { EDITION } from '../data/edition'
 
 interface Props {
   /** Optional title shown next to back button (e.g. book title) */
@@ -14,7 +15,7 @@ export function NavBar({ title, subtitle, actions }: Props) {
   const pathname = useLocation().pathname.replace(/\/+$/, '') || '/'
 
   const isHome = pathname === '/'
-  const pageTitle = isHome ? 'Books' : pathname === '/library' ? 'My books'
+  const pageTitle = isHome ? EDITION.name : pathname === '/library' ? 'My books'
     : pathname === '/settings' ? 'Settings' : null
   const showTitle = Boolean(title && title !== pageTitle)
   const online = useOnline()
@@ -28,7 +29,7 @@ export function NavBar({ title, subtitle, actions }: Props) {
         <div className={`flex flex-1 items-center gap-3 md:gap-5 ${showTitle ? 'min-w-0' : 'min-w-fit'}`}>
           {/* Logo — always visible, always links home */}
           <Link to="/" aria-current={isHome ? 'page' : undefined} className="text-lg md:text-xl font-display hover:text-accent transition shrink-0">
-            Books
+            {EDITION.name}
           </Link>
 
           {/* Nav links — desktop only */}

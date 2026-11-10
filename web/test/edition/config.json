@@ -1,0 +1,12 @@
+{
+  "id": "books",
+  "name": "Books",
+  "shortName": "Books",
+  "language": "en",
+  "site": "https://books.freeappstore.online",
+  "marketingSite": "https://books.freewebstore.online/",
+  "title": "Books — Free Classic Books to Read & Listen",
+  "description": "Read classic books free online or save them offline. Enjoy fiction, philosophy, plays and poetry, with audio narration for selected titles. No account needed.",
+  "shareDescription": "Read classic books free online, save them offline, and listen to selected narrated titles. No account needed.",
+  "audio": { "dataset": "serge-ivo/books-audio", "voice": "af_heart", "engine": "kokoro" }
+}

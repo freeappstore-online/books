@@ -7,7 +7,7 @@ import {
 import { loadPreparedManifest } from '../../src/hooks/preparedAudio'
 
 // The real Alice chapter 1 and its published timings (serge-ivo/books-audio af_heart/alice-in-wonderland/0.timings.json)
-const alice = JSON.parse(readFileSync(new URL('../../../edition/texts/alice-in-wonderland.json', import.meta.url), 'utf8')) as { chapters: { content: string }[] }
+const alice = JSON.parse(readFileSync(new URL('../edition/texts/alice-in-wonderland.json', import.meta.url), 'utf8')) as { chapters: { content: string }[] }
 const text = alice.chapters[0].content
 const timings = JSON.parse(readFileSync(new URL('../fixtures/alice-0.timings.json', import.meta.url), 'utf8')) as { v: number; segments: TimingSegment[] }
 const segs = timings.segments

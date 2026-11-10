@@ -36,7 +36,7 @@ const schema = {
       isPartOf: { '@id': `${SITE}#website` }, inLanguage: 'en',
       description: 'Browse classic fiction, philosophy, plays and poetry. Read free, save books offline, and listen to selected narrated titles.',
       mainEntity: { '@type': 'ItemList', numberOfItems: books.length, name: 'Books catalogue', url: `${SITE}#catalog` } },
-    { '@type': 'WebApplication', name: 'Books', url: APP, applicationCategory: 'EducationalApplication',
+    { '@type': 'WebApplication', name: CONFIG.name, url: APP, applicationCategory: 'EducationalApplication',
       operatingSystem: 'Any device with a modern web browser', isAccessibleForFree: true,
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' } },
     { '@type': 'Book', name: "Alice's Adventures in Wonderland", author: { '@type': 'Person', name: 'Lewis Carroll' },
@@ -52,7 +52,7 @@ const fragmentSize = cards.length + filters.length + structured.length
 if (fragmentSize > 45000) throw new Error(`Catalogue fragments need another section: ${fragmentSize} characters`)
 const rows = CATALOG.map(b => [b.id, b.title, b.author, b.year, genres.indexOf(b.genre), b.chapters, b.readTime,
   Number(COVERS.has(b.id))])
-const script = readFileSync(resolve(here, 'books.js.template'), 'utf8').replace('{{BOOKS}}', JSON.stringify(rows))
+const script = readFileSync(resolve(here, 'books.js.template'), 'utf8').replace('{{BOOKS}}', JSON.stringify(rows)).replace('{{APP}}', JSON.stringify(APP))
 mkdirSync(out, { recursive: true })
 writeFileSync(resolve(out, 'catalog.json'), JSON.stringify(fragments, null, 2))
 writeFileSync(resolve(out, 'books.js'), script)

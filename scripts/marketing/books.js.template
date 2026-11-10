@@ -1,8 +1,8 @@
 var BOOKS={{BOOKS}};
 (function(){
-var APP='https://books.freeappstore.online';
+var APP={{APP}};
 var GENRES=['Fiction','Non-Fiction','Drama','Poetry'];
-// Books with prepared narration (books.freeappstore.online manifest): slug -> length
+// Books with prepared narration (the app's manifest): slug -> length
 var AUDIO={'alice-in-wonderland':'2h 18min'};
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function yr(y){return y<0?(-y)+' BC':String(y)}

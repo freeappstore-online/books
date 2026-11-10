@@ -8,7 +8,7 @@ books#59). Each language app is a **fork** of this repository that merges `books
 
 | Owned by each app (never merged from `books`) | Shared: the engine (only ever changed in `books`) |
 |---|---|
-| `edition/`: `config.json`, `books/`, `sources.lock.json`, `texts/`, `books.json`, `covers/`, `covers.json` | everything else: `web/`, `scripts/`, the workflows except `deploy.yml`, `docs/` |
+| `edition/`: `config.json`, `books/`, `sources.lock.json`, `texts/`, `books.json`, `covers/`, `covers.json`, `public/` | everything else: `web/`, `scripts/`, the workflows except `deploy.yml`, `docs/` |
 | `README.md`, `fas.json`, `.github/workflows/deploy.yml` (written by `fas publish`) | |
 
 Engine code never names an app. Anything that differs between apps, such as the name, language,
@@ -30,6 +30,7 @@ format of each file is in [edition/README.md](../edition/README.md).
   - writes `manifest.json` from `manifest.template.json` and the config;
   - copies `texts/` to `/catalog/` and `covers/` to `/covers/`. Those URLs never change: saved books,
     read-along timings and resume positions are keyed by them.
+  - copies `public/` to the site root.
 - **The scripts:** `scripts/catalog/books.py` resolves the edition (`EDITION`, `CONFIG`), and the
   other scripts take their paths from it. The workflows read `audio.dataset` and `audio.voice` from
   the config.

@@ -25,7 +25,8 @@ export default defineConfig({
   use: { baseURL, trace: 'retain-on-failure', serviceWorkers: 'block' },
   webServer: [
     {
-      command: `vite build && vite preview --port ${PORT} --strictPort`,
+      // Built from the test edition, so a language app runs the same tests (test/edition/README.md)
+      command: `BOOKS_EDITION=test/edition vite build && vite preview --port ${PORT} --strictPort`,
       url: baseURL,
       timeout: 120_000,
       reuseExistingServer: false,

@@ -72,7 +72,8 @@ def _validate(slug: str, book: dict):
 
 def load() -> dict[str, dict]:
     books = {}
-    for name in sorted(os.listdir(BOOKS_DIR)):
+    # A new edition has no books yet (git keeps no empty folder)
+    for name in sorted(os.listdir(BOOKS_DIR) if os.path.isdir(BOOKS_DIR) else []):
         if name.endswith(".toml"):
             with open(os.path.join(BOOKS_DIR, name), "rb") as f:
                 books[name[:-5]] = book = tomllib.load(f)

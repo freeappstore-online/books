@@ -8,7 +8,7 @@
     "skipLibCheck": true,
 
     "moduleResolution": "bundler",
-    "paths": { "@edition/*": ["../edition/*"] },
+    "paths": { "@edition/*": ["./test/edition/*"] },
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,

@@ -10,6 +10,7 @@ its own `edition/` and takes the engine from `books` ([docs/editions.md](../docs
 | `books/<slug>.toml` | one book each, described below |
 | `sources.lock.json` | the SHA-256 of every source file a book is built from ([docs/catalogue-pipeline.md](../docs/catalogue-pipeline.md)) |
 | `texts/`, `books.json`, `covers/`, `covers.json` | generated from the book files, see below |
+| `public/` | files served at the site root that belong to this app's address: search engine verification, the IndexNow key |
 
 ## The catalogue's books
 

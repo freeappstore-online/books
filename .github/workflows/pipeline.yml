@@ -13,12 +13,14 @@ on:
       - 'edition/**'
       - 'scripts/**'
       - 'web/src/data/**'
+      - 'web/test/edition/**'
       - '.github/workflows/pipeline.yml'
   pull_request:
     paths:
       - 'edition/**'
       - 'scripts/**'
       - 'web/src/data/**'
+      - 'web/test/edition/**'
       - '.github/workflows/pipeline.yml'
   workflow_dispatch:
 

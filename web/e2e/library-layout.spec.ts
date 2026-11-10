@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { test, expect, stubHuggingFace, alice, HF, SLUG, wav } from './fixtures'
 
-const catalog = JSON.parse(readFileSync(new URL('../../edition/books.json', import.meta.url), 'utf8')) as {
+const catalog = JSON.parse(readFileSync(new URL('../test/edition/books.json', import.meta.url), 'utf8')) as {
   id: string; title: string; author: string; chapters: number
 }[]
 const aliceTitle = catalog.find(book => book.id === SLUG)!.title

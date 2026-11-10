@@ -37,7 +37,8 @@ function webManifest(): string {
 
 /**
  * The edition in the app: its strings in index.html, its PWA manifest, and its texts and covers
- * served at /catalog/ and /covers/ (the URLs saved books and narration positions are keyed by).
+ * served at /catalog/ and /covers/ (the URLs saved books and narration positions are keyed by),
+ * and its own files at the site root (edition/public/).
  */
 function edition(): Plugin {
   const files = (url: string) => {
@@ -75,6 +76,8 @@ function edition(): Plugin {
       const out = options.dir!
       cpSync(join(editionDir, 'texts'), join(out, 'catalog'), { recursive: true })
       if (existsSync(join(editionDir, 'covers'))) cpSync(join(editionDir, 'covers'), join(out, 'covers'), { recursive: true })
+      // The edition's own files at the site root (search engine verification, IndexNow key)
+      if (existsSync(join(editionDir, 'public'))) cpSync(join(editionDir, 'public'), out, { recursive: true })
     },
   }
 }
