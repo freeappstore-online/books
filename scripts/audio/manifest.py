@@ -1,22 +1,26 @@
 """Update manifest.json for the narrated chapters of the given books (books#4, books#18, books#27).
 
 usage: manifest.py CATALOG_DIR REPO VOICE SLUG...|all-existing
-Output: {"<voice>": {"<slug>": [seconds per chapter, null if not narrated]}}. A chapter's length is
+Output: {"<voice>": {"<slug>": [seconds per chapter, null if not narrated]}, "extras": {"<voice>": {"<slug>":
+{"timings": true if every narrated chapter has a timings.json, "titles": [seconds of each chapter's
+<i>.title.m4a, null if none]}}} (books#37; the app ignores top-level keys it doesn't know). A chapter's length is
 where its timings.json ends (the audio ends with its last sentence); chapters without timings are
 measured with ffprobe (over HTTP, reading only the header; downloaded when that fails), never
-estimated from the file size, which ran a few % short (books#31).
+estimated from the file size, which ran a few % short (books#31); so are title clips.
 Only the given books' entries in VOICE are rebuilt; everything else in the manifest is kept as it
 is, so audio in the dataset reaches the app only for books a run names. `all-existing` (the
 workflow's manifest mode only) names every book with audio in VOICE, to publish what is there
 without narrating anything (books#31). generate.py calls publish() with each batch of chapters,
 so they appear while a run goes on.
 """
-import json, os, subprocess, sys, tempfile, time
+import json, os, re, subprocess, sys, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
 from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download, hf_hub_url
 from huggingface_hub.errors import EntryNotFoundError, HfHubHTTPError
 
 ALL_EXISTING = "all-existing"
+EXTRAS = "extras"
+CHAPTER = re.compile(r".+/\d+\.m4a")  # VOICE/<slug>/<i>.m4a; a title clip is <i>.title.m4a
 
 
 def check_slugs(catalog: str, slugs: list[str]) -> None:
@@ -52,7 +56,7 @@ def remote_duration(repo: str, path: str, revision: str) -> float:
 def existing(repo: str, voice: str) -> list[str]:
     """Slugs of every book with audio in voice in the dataset."""
     files = HfApi().list_repo_tree(repo, path_in_repo=voice, repo_type="dataset", recursive=True)
-    return sorted({f.path.split("/")[1] for f in files if f.path.endswith(".m4a")})
+    return sorted({f.path.split("/")[1] for f in files if CHAPTER.fullmatch(f.path)})
 
 
 def build(catalog: str, voice: str, seconds: dict[str, float], slugs: list[str]) -> dict:
@@ -66,14 +70,32 @@ def build(catalog: str, voice: str, seconds: dict[str, float], slugs: list[str])
     return books
 
 
-def merge(manifest: dict, voice: str, books: dict, slugs: list[str]) -> dict:
-    """manifest with the given books' entries in voice replaced by books; nothing else changes."""
-    out = {v: dict(b) for v, b in manifest.items()}
-    entries = out.setdefault(voice, {})
+def build_extras(catalog: str, voice: str, seconds: dict[str, float], timed: set[str], slugs: list[str]) -> dict:
+    """Extras of the given books with audio: whether every narrated chapter has timings, and the
+    length of each chapter's title clip VOICE/<slug>/<chapter>.title.m4a (null without one)."""
+    extras: dict = {}
     for slug in slugs:
-        entries.pop(slug, None)
-    entries.update(books)
-    return {v: dict(sorted(b.items())) for v, b in sorted(out.items()) if b}
+        n = len(json.load(open(os.path.join(catalog, f"{slug}.json")))["chapters"])
+        narrated = [f"{voice}/{slug}/{i}.m4a" for i in range(n) if f"{voice}/{slug}/{i}.m4a" in seconds]
+        if narrated:
+            titles = [seconds.get(f"{voice}/{slug}/{i}.title.m4a") for i in range(n)]
+            extras[slug] = {"timings": all(p in timed for p in narrated),
+                            "titles": [round(s, 2) if s else None for s in titles]}
+    return extras
+
+
+def merge(manifest: dict, voice: str, books: dict, extras: dict, slugs: list[str]) -> dict:
+    """manifest with the given books' entries in voice replaced by books, and theirs in extras by
+    extras; nothing else changes."""
+    tables = {v: dict(b) for v, b in manifest.items() if v != EXTRAS}, \
+             {v: dict(b) for v, b in manifest.get(EXTRAS, {}).items()}
+    for table, new in zip(tables, (books, extras)):
+        entries = table.setdefault(voice, {})
+        for slug in slugs:
+            entries.pop(slug, None)
+        entries.update(new)
+    out, more = ({v: dict(sorted(b.items())) for v, b in sorted(t.items()) if b} for t in tables)
+    return {**out, EXTRAS: more} if more else out
 
 
 def publish(catalog: str, repo: str, voice: str, slugs: list[str], folder: str | None = None,
@@ -110,10 +132,13 @@ def publish(catalog: str, repo: str, voice: str, slugs: list[str], folder: str |
                 probed[p, remote[p]] = remote_duration(repo, p, head)
             return probed[p, remote[p]]
 
-        paths = sorted({p for p in [*remote, *files] if p.endswith(".m4a")})
+        paths = sorted({p for p in [*remote, *files] if p.endswith(".m4a")})  # chapters and title clips
         with ThreadPoolExecutor(8) as pool:
             seconds = dict(zip(paths, pool.map(seconds_of, paths)))
-        manifest = merge(manifest, voice, build(catalog, voice, seconds, slugs), slugs)
+        present = remote.keys() | files.keys()
+        timed = {p for p in paths if p.removesuffix(".m4a") + ".timings.json" in present}
+        manifest = merge(manifest, voice, build(catalog, voice, seconds, slugs),
+                         build_extras(catalog, voice, seconds, timed, slugs), slugs)
         ops = [CommitOperationAdd(p, f) for p, f in files.items()]
         ops.append(CommitOperationAdd("manifest.json", json.dumps(manifest, separators=(",", ":")).encode()))
         try:

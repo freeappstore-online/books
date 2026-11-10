@@ -5,9 +5,12 @@ usage: python scripts/audio/test_audio.py   (needs requirements.txt installed an
 import json, os, subprocess, sys, tempfile, unittest
 from types import SimpleNamespace
 from unittest import mock
+import numpy as np
+import soundfile as sf
 import manifest
-from manifest import build, check_slugs, duration, merge
-from segments import sentences, utf16
+from generate import encode, loudness, trim
+from manifest import build, build_extras, check_slugs, duration, merge
+from segments import sentences, spoken_title, utf16
 
 CATALOG = os.path.join(os.path.dirname(__file__), "../../web/public/catalog")
 ALICE = "alice-in-wonderland"
@@ -31,11 +34,32 @@ class Manifest(unittest.TestCase):
 
     def test_merge_keeps_other_entries_and_never_adds_other_books(self):
         manifest = {"af_heart": {ALICE: [1.0] * 12, "dracula": [2.0]}, "bf_emma": {ALICE: [3.0]}}
-        out = merge(manifest, "af_heart", {ALICE: [5.0] * 12}, [ALICE])
+        out = merge(manifest, "af_heart", {ALICE: [5.0] * 12}, {}, [ALICE])
         self.assertEqual(out, {"af_heart": {ALICE: [5.0] * 12, "dracula": [2.0]}, "bf_emma": {ALICE: [3.0]}})
         self.assertEqual(manifest["af_heart"][ALICE], [1.0] * 12)  # input untouched
         # A named book with no audio drops out; an empty voice disappears
-        self.assertEqual(merge({"af_heart": {ALICE: [1.0]}}, "af_heart", {}, [ALICE]), {})
+        self.assertEqual(merge({"af_heart": {ALICE: [1.0]}}, "af_heart", {}, {}, [ALICE]), {})
+
+    def test_merge_extras_like_the_voices_and_never_as_a_voice(self):
+        """extras sits next to the voices (books#37): its named books are replaced, the rest kept."""
+        old = {"af_heart": {ALICE: [1.0], "dracula": [2.0]},
+               "extras": {"af_heart": {ALICE: {"timings": True, "titles": [None]},
+                                       "dracula": {"timings": False, "titles": [1.5]}}}}
+        new = {ALICE: {"timings": True, "titles": [2.25]}}
+        out = merge(old, "af_heart", {ALICE: [5.0]}, new, [ALICE])
+        self.assertEqual(out, {"af_heart": {ALICE: [5.0], "dracula": [2.0]},
+                               "extras": {"af_heart": {ALICE: new[ALICE], "dracula": {"timings": False, "titles": [1.5]}}}})
+        self.assertEqual(merge({"af_heart": {ALICE: [1.0]}}, "af_heart", {}, {}, [ALICE]), {})  # no empty extras
+
+    def test_extras_flag_timings_and_list_title_lengths(self):
+        v = f"af_heart/{ALICE}"
+        seconds = {f"{v}/0.m4a": 655.2, f"{v}/0.title.m4a": 2.345, f"{v}/2.m4a": 557.8, "af_heart/dracula/0.m4a": 9.0}
+        extras = build_extras(CATALOG, "af_heart", seconds, {f"{v}/0.m4a"}, [ALICE])
+        self.assertEqual(list(extras), [ALICE])
+        self.assertEqual(extras[ALICE], {"timings": False, "titles": [2.35] + [None] * 11})  # 2.m4a has none
+        extras = build_extras(CATALOG, "af_heart", seconds, {f"{v}/0.m4a", f"{v}/2.m4a"}, [ALICE])
+        self.assertTrue(extras[ALICE]["timings"])
+        self.assertEqual(build_extras(CATALOG, "af_heart", {}, set(), [ALICE]), {})  # no audio, no entry
 
 
 class Durations(unittest.TestCase):
@@ -49,7 +73,7 @@ class Durations(unittest.TestCase):
     def test_publish_takes_timings_ends_else_probes_and_nulls_missing_chapters(self):
         """Alice-like chapters with timings use them; audio without timings is probed, never sized (books#31)."""
         tree = [SimpleNamespace(path=p, blob_id=f"b{i}") for i, p in enumerate([
-            f"af_heart/{ALICE}/0.m4a", f"af_heart/{ALICE}/0.timings.json",
+            f"af_heart/{ALICE}/0.m4a", f"af_heart/{ALICE}/0.timings.json", f"af_heart/{ALICE}/0.title.m4a",
             f"af_heart/{ALICE}/2.m4a", "af_heart/dracula/0.m4a"])]
         api = mock.Mock()
         api.repo_info.return_value = SimpleNamespace(sha="head")
@@ -62,11 +86,76 @@ class Durations(unittest.TestCase):
             download = lambda repo, path, **kw: empty if path == "manifest.json" else timings
             with mock.patch.object(manifest, "HfApi", return_value=api), \
                  mock.patch.object(manifest, "hf_hub_download", side_effect=download), \
-                 mock.patch.object(manifest, "remote_duration", return_value=557.84) as probe:
+                 mock.patch.object(manifest, "remote_duration", side_effect=lambda r, p, h: 1.5 if "title" in p else 557.84) as probe:
                 out = manifest.publish(CATALOG, "repo", "af_heart", [ALICE])
-        probe.assert_called_once_with("repo", f"af_heart/{ALICE}/2.m4a", "head")
+        self.assertEqual(sorted(c.args[1] for c in probe.call_args_list),
+                         [f"af_heart/{ALICE}/0.title.m4a", f"af_heart/{ALICE}/2.m4a"])
         self.assertEqual(out["af_heart"][ALICE], [655.2, None, 557.8] + [None] * 9)
         self.assertEqual(out["af_heart"]["dracula"], [1.0])  # not named: kept as it was
+        self.assertEqual(out["extras"], {"af_heart": {ALICE: {"timings": False, "titles": [1.5] + [None] * 11}}})
+
+
+class Encoding(unittest.TestCase):
+    def test_encode_normalises_loudness_without_moving_the_audio(self):
+        """-18 LUFS, true peak <= -1.5 dBTP, same length, nothing shifted: timings stay exact (books#37)."""
+        sr = 24_000
+        t = np.arange(int(6.5 * sr)) / sr
+        # a quiet "voice" of tone bursts with a loud click, so the gain is limited by the peak
+        x = (0.05 * np.sin(2 * np.pi * 220 * t) * (np.sin(2 * np.pi * 1.5 * t) > 0)).astype(np.float32)
+        x[3 * sr] = 0.99
+        with tempfile.TemporaryDirectory() as d:
+            sf.write(f"{d}/in.wav", x, sr)
+            encode(f"{d}/in.wav", f"{d}/out.m4a")
+            lufs, peak = loudness(f"{d}/out.m4a")
+            self.assertAlmostEqual(lufs, -18, delta=1)
+            self.assertLessEqual(peak, -1.5)
+            self.assertAlmostEqual(duration(f"{d}/out.m4a"), len(x) / sr, delta=0.001)
+            y = np.frombuffer(subprocess.run(["ffmpeg", "-loglevel", "error", "-i", f"{d}/out.m4a", "-f", "f32le",
+                                              "-ac", "1", "-ar", str(sr), "-"], capture_output=True, check=True).stdout,
+                              np.float32)
+            self.assertEqual(len(y), len(x))
+            # the first burst starts where it did: compare the envelopes' onsets
+            onset = lambda a: int(np.argmax(np.abs(a) > 0.5 * np.abs(a[: sr // 2]).max()))
+            self.assertLessEqual(abs(onset(y) - onset(x)), 24)  # 1 ms
+
+    def test_trim_keeps_a_little_silence_at_each_end(self):
+        sr = 24_000
+        x = np.concatenate([np.zeros(sr), 0.5 * np.ones(sr // 2), np.zeros(sr)]).astype(np.float32)
+        y = trim(x, sr)
+        self.assertEqual(len(y), sr // 2 + 2 * int(0.1 * sr))
+        self.assertEqual(len(trim(np.zeros(100, np.float32), sr)), 100)
+
+
+class Titles(unittest.TestCase):
+    def test_spoken_titles(self):
+        cases = {
+            "Chapter 1: The Cyclone": "Chapter One. The Cyclone.",
+            "Introduction": "Introduction.",
+            "CHAPTER IV.": "Chapter Four.",
+            "Part 1, Chapter 3": "Part One, Chapter Three.",
+            "XII": "Chapter Twelve.",
+            "12": "Chapter Twelve.",
+            "Inferno: Canto XXXIV": "Inferno. Canto Thirty-Four.",
+            "Dedication of Part I": "Dedication of Part One.",
+            "1. How They Went to the Mountains": "One. How They Went to the Mountains.",
+            "Book 6, Chapter 365": "Book Six, Chapter Three Hundred and Sixty-Five.",
+            "Chapter 28: Mr. MICAWBER’S GAUNTLET": "Chapter Twenty-Eight. Mr. Micawber’s Gauntlet.",
+            "Chapter 5: I Elude My Watch Dog": "Chapter Five. I Elude My Watch Dog.",
+            "Chapter 17: “It Is the Child!”": "Chapter Seventeen. “It Is the Child!”",
+            "Letter 3: [Written some months after the last]": "Letter Three. Written some months after the last.",
+            "Chapter the Last": "Chapter the Last.",
+            "": "",
+        }
+        for title, spoken in cases.items():
+            self.assertEqual(spoken_title(title), spoken)
+
+    def test_every_catalogue_title_is_spoken(self):
+        for name in sorted(os.listdir(CATALOG)):
+            for ch in json.load(open(os.path.join(CATALOG, name)))["chapters"]:
+                spoken = spoken_title(ch["title"])
+                with self.subTest(book=name, title=ch["title"]):
+                    self.assertEqual(bool(spoken), bool(ch["title"].strip()))
+                    self.assertNotRegex(spoken, r"\b(?:Chapter|Book|Part|Act|Scene|Canto) (?:\d+|[IVXLC]+)\b")
 
 
 class Segments(unittest.TestCase):

@@ -8,23 +8,26 @@ name: Generate audio
 # and other books' audio in the dataset stays out of the manifest (books#27).
 # mode=manifest narrates nothing: it only rebuilds the named books' manifest entries from the audio
 # already in the dataset; there `books: all-existing` names every book with audio (books#31).
+# Narration comes with a title clip per chapter and is loudness-normalised (books#37). mode=titles makes
+# only the title clips missing next to chapters already narrated (all of them with force), and also
+# takes `books: all-existing`; it adds no chapter audio.
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: narrate (plan, narrate, publish) or manifest (only publish what is already uploaded)
+        description: narrate (plan, narrate, publish), titles (only the missing chapter title clips) or manifest (only publish what is already uploaded)
         type: choice
-        options: [narrate, manifest]
+        options: [narrate, titles, manifest]
         default: narrate
       voice:
         description: Kokoro voice id
         default: af_heart
       books:
-        description: Space-separated catalogue slugs, e.g. alice-in-wonderland (required); manifest mode also takes all-existing
+        description: Space-separated catalogue slugs, e.g. alice-in-wonderland (required); titles and manifest modes also take all-existing
         required: true
       force:
-        description: Narrate these books again even where audio exists
+        description: Narrate these books again even where audio exists (in titles mode, their title clips)
         type: boolean
         default: false
 
@@ -38,10 +41,11 @@ env:
   VOICE: ${{ inputs.voice }}
   BOOKS: ${{ inputs.books }}
   FORCE: ${{ inputs.force && '--force' || '' }}
+  TITLES: ${{ inputs.mode == 'titles' && '--titles' || '' }}
 
 jobs:
   plan:
-    if: inputs.mode == 'narrate'
+    if: inputs.mode != 'manifest'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -53,11 +57,15 @@ jobs:
       - name: Require named books
         run: |
           [ -n "${BOOKS// }" ] || { echo "::error::Name the books to narrate (books#27)"; exit 1; }
-          [[ " $BOOKS " != *" all-existing "* ]] || { echo "::error::all-existing is for mode=manifest only (books#31)"; exit 1; }
+          if [ "${{ inputs.mode }}" = titles ]; then
+            [ "$BOOKS" = all-existing ] || [[ " $BOOKS " != *" all-existing "* ]] || { echo "::error::all-existing stands alone"; exit 1; }
+          else
+            [[ " $BOOKS " != *" all-existing "* ]] || { echo "::error::all-existing is for mode=titles or manifest only (books#31)"; exit 1; }
+          fi
       - run: pip install -q -r scripts/audio/requirements.txt
       - run: hf repos create "$REPO" --repo-type dataset --public --exist-ok
       - id: plan
-        run: echo "matrix=$(python scripts/audio/plan.py web/public/catalog "$REPO" "$VOICE" $FORCE $BOOKS)" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(python scripts/audio/plan.py web/public/catalog "$REPO" "$VOICE" $FORCE $TITLES $BOOKS)" >> "$GITHUB_OUTPUT"
 
   generate:
     needs: plan
@@ -89,7 +97,7 @@ jobs:
       - name: Narrate and upload
         env:
           UNITS: ${{ matrix.units }}
-        run: python scripts/audio/generate.py models web/public/catalog "$REPO" "$VOICE" $UNITS
+        run: python scripts/audio/generate.py models web/public/catalog "$REPO" "$VOICE" $TITLES $UNITS
 
   manifest:
     needs: [plan, generate]

@@ -10,7 +10,7 @@ together. Re-narrating gives exact timings; this is the cheap way for audio that
 import json, os, subprocess, sys, tempfile
 import numpy as np
 from huggingface_hub import HfApi, hf_hub_download
-from manifest import check_slugs
+from manifest import CHAPTER, check_slugs
 from segments import sentences, utf16
 
 SR = 24_000
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     todo: dict[str, list[int]] = {}
     for f in sorted(files):
         parts = f.split("/")
-        if len(parts) == 3 and parts[0] == voice and parts[2].endswith(".m4a") and parts[1] in only:
+        if len(parts) == 3 and parts[0] == voice and CHAPTER.fullmatch(f) and parts[1] in only:
             if f.removesuffix(".m4a") + ".timings.json" not in files:
                 todo.setdefault(parts[1], []).append(int(parts[2].removesuffix(".m4a")))
     for slug, chapters in todo.items():

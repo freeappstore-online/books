@@ -5,8 +5,8 @@ Kokoro narration. Adding one takes two steps:
 
 1. **Text:** `scripts/catalog/fetch.py` writes `web/public/catalog/<slug>.json`, then you push to `main`
    and the app redeploys.
-2. **Narration:** the *Generate audio* workflow uploads `<voice>/<slug>/<chapter>.m4a` and its
-   `<chapter>.timings.json` to the
+2. **Narration:** the *Generate audio* workflow uploads `<voice>/<slug>/<chapter>.m4a`, its
+   `<chapter>.timings.json` and its title clip `<chapter>.title.m4a` to the
    [`serge-ivo/books-audio`](https://huggingface.co/datasets/serge-ivo/books-audio) dataset on Hugging Face
    and updates its `manifest.json`. The app reads that manifest at runtime, so narration needs no
    redeploy.
@@ -167,7 +167,12 @@ The workflow runs three jobs:
    (about 4 h of CPU), keeping a book's chapters together.
 2. **generate** (`scripts/audio/generate.py`) runs one job per shard, at most 15 at once. It narrates
    each chapter with Kokoro v1.0 one sentence at a time
-   (`scripts/audio/segments.py` splits them), joins them with short pauses, and encodes 40 kbps mono AAC.
+   (`scripts/audio/segments.py` splits them), joins them with short pauses, and encodes 40 kbps mono AAC
+   (8 kHz low-pass), loudness-normalised with a two-pass ffmpeg `loudnorm` to about **−18 LUFS** with a
+   true peak of at most **−1.5 dBTP** (books#37). The normalisation only changes the level: no sample
+   moves, so the timings stay exact. It also narrates the chapter's title as `<chapter>.title.m4a`: the
+   catalogue title spoken ("Chapter 1: The Cyclone" → "Chapter One. The Cyclone.",
+   `segments.spoken_title`), trimmed to at most 0.1 s of silence at each end, normalised the same way.
    Next to the audio it writes `<chapter>.timings.json`, `{"v":1,"segments":[[charStart,charEnd,startSec,endSec],...]}`,
    one segment per sentence with UTF-16 offsets into the chapter's `content` (books#22); the reader
    uses it to follow and highlight the narration. At most every 10 minutes it commits the new chapters
@@ -181,6 +186,18 @@ The workflow runs three jobs:
    without timings; never a file-size estimate (books#31). A chapter with no audio is `null`. The app's
    "Audiobook" badge, its Play button and playback come from this file (`web/src/hooks/preparedAudio.ts`).
 
+   Next to the voices, `manifest.json` has one more top-level key (books#37), so the app knows what
+   else exists without probing for it:
+
+   ```json
+   {"af_heart": {"alice-in-wonderland": [655.2, 646.3, ...]},
+    "extras": {"af_heart": {"alice-in-wonderland": {"timings": true, "titles": [2.41, 3.05, ...]}}}}
+   ```
+
+   `timings` is true when every narrated chapter of the book has a `timings.json`; `titles` has each
+   chapter's title clip length in seconds (`null` without one). It is rebuilt with the book's entry,
+   in every mode.
+
 To publish audio that is already in the dataset without narrating anything, dispatch with
 `mode=manifest`: it skips plan and generate and runs only the manifest job for `books`, which there
 may also be `all-existing` (every book with audio in the voice). `all-existing` is refused in
@@ -188,6 +205,17 @@ may also be `all-existing` (every book with audio in the voice). `all-existing` 
 
 ```bash
 gh workflow run generate-audio.yml -R freeappstore-online/books -f mode=manifest -f books=all-existing
+```
+
+To add title clips to books narrated before they existed, without narrating their chapters again,
+dispatch with `mode=titles`. It plans only the chapters that have audio but no `<chapter>.title.m4a`
+(every narrated chapter with `force`), makes their clips, and rebuilds the manifest; `books` may be
+`all-existing`. A title takes about 2 s of runner time, so even every narrated book (~1,700 chapters)
+fits in one shard of about an hour. Their chapter audio keeps its old level (about −22 LUFS) until
+it is narrated again, so their titles are about 4 dB louder than the chapters.
+
+```bash
+gh workflow run generate-audio.yml -R freeappstore-online/books -f mode=titles -f books=all-existing
 ```
 
 Wait for any running *Generate audio* run to finish first: its shards also commit `manifest.json`.
@@ -201,8 +229,8 @@ Audio narrated before timings existed (everything uploaded before books#22, exce
 with `scripts/audio/backfill_timings.py CATALOG_DIR REPO VOICE SLUG...` (needs `HF_TOKEN` and ffmpeg;
 approximate, see books#22).
 
-`python scripts/audio/test_audio.py` tests the scripts' pure parts against the catalogue (no network;
-needs ffmpeg).
+`python scripts/audio/test_audio.py` tests the scripts' pure parts against the catalogue, the spoken
+titles and the loudness step (no network; needs ffmpeg).
 
 The upload uses the `HUGGINGFACE_TOKEN` repo secret (listed in `ops` `inventory.yaml`; it has write
 access to `serge-ivo/books-audio`). Never print it.
