@@ -167,17 +167,33 @@ The workflow runs three jobs:
 3. **manifest** (`scripts/audio/manifest.py`) rebuilds the `books`' entries in `manifest.json` from
    the dataset once all shards are done, in case one died before its last commit. Only the run's
    `books` in the run's `voice` are touched; every other entry is kept as it is, so audio of other
-   books in the dataset (the cancelled full-catalogue run left partial audio of 53 books there) stays
-   out of the app until a run is asked for them. A chapter's seconds are where its `timings.json` ends,
-   or an estimate from the file size (a few % short) for audio without timings. The app's "Audiobook"
-   badge, its Play button and playback come from this file (`web/src/hooks/preparedAudio.ts`).
+   books in the dataset stays out of the app until a run names them. A chapter's seconds are where its
+   `timings.json` ends, or the audio's real length from `ffprobe` (over HTTP, else downloaded) for audio
+   without timings; never a file-size estimate (books#31). A chapter with no audio is `null`. The app's
+   "Audiobook" badge, its Play button and playback come from this file (`web/src/hooks/preparedAudio.ts`).
+
+To publish audio that is already in the dataset without narrating anything, dispatch with
+`mode=manifest`: it skips plan and generate and runs only the manifest job for `books`, which there
+may also be `all-existing` (every book with audio in the voice). `all-existing` is refused in
+`narrate` mode (books#31).
+
+```bash
+gh workflow run generate-audio.yml -R freeappstore-online/books -f mode=manifest -f books=all-existing
+```
+
+Wait for any running *Generate audio* run to finish first: its shards also commit `manifest.json`.
+
+In the app, a partly narrated book plays its narrated chapters and passes over the others (Next,
+Previous and auto-advance); its other chapters are reading-only (no Play). A chapter without timings
+plays without the read-along highlight.
 
 Audio narrated before timings existed (everything uploaded before books#22, except Alice) has no
 `timings.json`. Either narrate it again with `force`, or derive timings from the pauses in the audio
 with `scripts/audio/backfill_timings.py CATALOG_DIR REPO VOICE SLUG...` (needs `HF_TOKEN` and ffmpeg;
 approximate, see books#22).
 
-`python scripts/audio/test_audio.py` tests the scripts' pure parts against the catalogue (no network).
+`python scripts/audio/test_audio.py` tests the scripts' pure parts against the catalogue (no network;
+needs ffmpeg).
 
 The upload uses the `HUGGINGFACE_TOKEN` repo secret (listed in `ops` `inventory.yaml`; it has write
 access to `serge-ivo/books-audio`). Never print it.

@@ -1,19 +1,22 @@
 """Update manifest.json for the narrated chapters of the given books (books#4, books#18, books#27).
 
-usage: manifest.py CATALOG_DIR REPO VOICE SLUG...
+usage: manifest.py CATALOG_DIR REPO VOICE SLUG...|all-existing
 Output: {"<voice>": {"<slug>": [seconds per chapter, null if not narrated]}}. A chapter's length is
-where its timings.json ends (the audio ends with its last sentence); chapters without timings fall
-back to an estimate from the file size (AAC at ~41.7 kbps, which runs a few % short).
+where its timings.json ends (the audio ends with its last sentence); chapters without timings are
+measured with ffprobe (over HTTP, reading only the header; downloaded when that fails), never
+estimated from the file size, which ran a few % short (books#31).
 Only the given books' entries in VOICE are rebuilt; everything else in the manifest is kept as it
-is, so audio in the dataset reaches the app only for books a run was asked to narrate. There is no
-"every book" mode on purpose. generate.py calls publish() with each batch of chapters, so they
-appear while a run goes on.
+is, so audio in the dataset reaches the app only for books a run names. `all-existing` (the
+workflow's manifest mode only) names every book with audio in VOICE, to publish what is there
+without narrating anything (books#31). generate.py calls publish() with each batch of chapters,
+so they appear while a run goes on.
 """
-import json, os, sys, time
-from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download
+import json, os, subprocess, sys, tempfile, time
+from concurrent.futures import ThreadPoolExecutor
+from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download, hf_hub_url
 from huggingface_hub.errors import EntryNotFoundError, HfHubHTTPError
 
-BYTES_PER_SECOND = 41_700 / 8
+ALL_EXISTING = "all-existing"
 
 
 def check_slugs(catalog: str, slugs: list[str]) -> None:
@@ -28,6 +31,28 @@ def check_slugs(catalog: str, slugs: list[str]) -> None:
 def timings_end(path: str) -> float:
     """Where the narration described by a timings.json file ends, in seconds."""
     return json.load(open(path))["segments"][-1][3]
+
+
+def duration(source: str) -> float:
+    """Seconds of audio in source, a file or a URL (ffprobe reads only what it needs of a URL)."""
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", source],
+                         capture_output=True, text=True, check=True, timeout=120).stdout
+    return float(out)
+
+
+def remote_duration(repo: str, path: str, revision: str) -> float:
+    """Seconds of audio in the dataset file path: probed over HTTP, else downloaded and probed."""
+    try:
+        return duration(hf_hub_url(repo, path, repo_type="dataset", revision=revision))
+    except (subprocess.SubprocessError, ValueError):
+        with tempfile.TemporaryDirectory() as d:
+            return duration(hf_hub_download(repo, path, repo_type="dataset", revision=revision, local_dir=d))
+
+
+def existing(repo: str, voice: str) -> list[str]:
+    """Slugs of every book with audio in voice in the dataset."""
+    files = HfApi().list_repo_tree(repo, path_in_repo=voice, repo_type="dataset", recursive=True)
+    return sorted({f.path.split("/")[1] for f in files if f.path.endswith(".m4a")})
 
 
 def build(catalog: str, voice: str, seconds: dict[str, float], slugs: list[str]) -> dict:
@@ -62,6 +87,7 @@ def publish(catalog: str, repo: str, voice: str, slugs: list[str], folder: str |
     api = HfApi()
     files = {os.path.relpath(os.path.join(d, f), folder): os.path.join(d, f)
              for d, _, names in (os.walk(folder) if folder else []) for f in names}
+    probed: dict[tuple[str, str], float] = {}  # (path, blob id) → seconds, kept across retries
     for attempt in range(10):
         head = api.repo_info(repo, repo_type="dataset").sha
         try:
@@ -69,19 +95,24 @@ def publish(catalog: str, repo: str, voice: str, slugs: list[str], folder: str |
         except EntryNotFoundError:
             manifest = {}
         ours = {f"{voice}/{slug}" for slug in slugs}
-        remote = {f.path: f.size for f in api.list_repo_tree(repo, repo_type="dataset", recursive=True, revision=head)
+        remote = {f.path: f.blob_id for f in api.list_repo_tree(repo, repo_type="dataset", recursive=True, revision=head)
                   if f.path.rsplit("/", 1)[0] in ours}
-        seconds = {}
-        for p in {p for p in [*remote, *files] if p.endswith(".m4a")}:
+
+        def seconds_of(p: str) -> float:
             timings = p.removesuffix(".m4a") + ".timings.json"
             if timings in files:  # this commit's audio comes with this commit's timings
-                seconds[p] = timings_end(files[timings])
-            elif p in files:
-                seconds[p] = os.path.getsize(files[p]) / BYTES_PER_SECOND
-            elif timings in remote:
-                seconds[p] = timings_end(hf_hub_download(repo, timings, repo_type="dataset", revision=head))
-            else:
-                seconds[p] = remote[p] / BYTES_PER_SECOND
+                return timings_end(files[timings])
+            if p in files:
+                return duration(files[p])
+            if timings in remote:
+                return timings_end(hf_hub_download(repo, timings, repo_type="dataset", revision=head))
+            if (p, remote[p]) not in probed:
+                probed[p, remote[p]] = remote_duration(repo, p, head)
+            return probed[p, remote[p]]
+
+        paths = sorted({p for p in [*remote, *files] if p.endswith(".m4a")})
+        with ThreadPoolExecutor(8) as pool:
+            seconds = dict(zip(paths, pool.map(seconds_of, paths)))
         manifest = merge(manifest, voice, build(catalog, voice, seconds, slugs), slugs)
         ops = [CommitOperationAdd(p, f) for p, f in files.items()]
         ops.append(CommitOperationAdd("manifest.json", json.dumps(manifest, separators=(",", ":")).encode()))
@@ -99,5 +130,7 @@ def publish(catalog: str, repo: str, voice: str, slugs: list[str], folder: str |
 
 if __name__ == "__main__":
     catalog, repo, voice, *slugs = sys.argv[1:]
+    if slugs == [ALL_EXISTING]:
+        slugs = existing(repo, voice)
     manifest = publish(catalog, repo, voice, slugs)
     print(f"{voice}: {', '.join(manifest.get(voice, {}))}")

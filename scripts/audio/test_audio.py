@@ -1,9 +1,12 @@
 """Tests of the pure parts of the narration scripts, against the real catalogue (books#27).
 
-usage: python scripts/audio/test_audio.py   (needs requirements.txt installed; no network)
+usage: python scripts/audio/test_audio.py   (needs requirements.txt installed and ffmpeg; no network)
 """
-import json, os, sys, unittest
-from manifest import build, check_slugs, merge
+import json, os, subprocess, sys, tempfile, unittest
+from types import SimpleNamespace
+from unittest import mock
+import manifest
+from manifest import build, check_slugs, duration, merge
 from segments import sentences, utf16
 
 CATALOG = os.path.join(os.path.dirname(__file__), "../../web/public/catalog")
@@ -33,6 +36,37 @@ class Manifest(unittest.TestCase):
         self.assertEqual(manifest["af_heart"][ALICE], [1.0] * 12)  # input untouched
         # A named book with no audio drops out; an empty voice disappears
         self.assertEqual(merge({"af_heart": {ALICE: [1.0]}}, "af_heart", {}, [ALICE]), {})
+
+
+class Durations(unittest.TestCase):
+    def test_duration_is_the_real_audio_length(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "0.m4a")
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=2.5", "-ac", "1",
+                            "-c:a", "aac", "-b:a", "40k", path], check=True)
+            self.assertAlmostEqual(duration(path), 2.5, delta=0.05)
+
+    def test_publish_takes_timings_ends_else_probes_and_nulls_missing_chapters(self):
+        """Alice-like chapters with timings use them; audio without timings is probed, never sized (books#31)."""
+        tree = [SimpleNamespace(path=p, blob_id=f"b{i}") for i, p in enumerate([
+            f"af_heart/{ALICE}/0.m4a", f"af_heart/{ALICE}/0.timings.json",
+            f"af_heart/{ALICE}/2.m4a", "af_heart/dracula/0.m4a"])]
+        api = mock.Mock()
+        api.repo_info.return_value = SimpleNamespace(sha="head")
+        api.list_repo_tree.return_value = tree
+        with tempfile.TemporaryDirectory() as d:
+            timings = os.path.join(d, "t.json")
+            json.dump({"v": 1, "segments": [[0, 5, 0.0, 1.0], [6, 9, 1.4, 655.159]]}, open(timings, "w"))
+            empty = os.path.join(d, "m.json")
+            json.dump({"af_heart": {"dracula": [1.0]}}, open(empty, "w"))
+            download = lambda repo, path, **kw: empty if path == "manifest.json" else timings
+            with mock.patch.object(manifest, "HfApi", return_value=api), \
+                 mock.patch.object(manifest, "hf_hub_download", side_effect=download), \
+                 mock.patch.object(manifest, "remote_duration", return_value=557.84) as probe:
+                out = manifest.publish(CATALOG, "repo", "af_heart", [ALICE])
+        probe.assert_called_once_with("repo", f"af_heart/{ALICE}/2.m4a", "head")
+        self.assertEqual(out["af_heart"][ALICE], [655.2, None, 557.8] + [None] * 9)
+        self.assertEqual(out["af_heart"]["dracula"], [1.0])  # not named: kept as it was
 
 
 class Segments(unittest.TestCase):

@@ -6,15 +6,22 @@ name: Generate audio
 # Each shard commits the manifest with its chapters, so they appear as they finish (books#18).
 # Only the books named in `books` are narrated and published: there is no "every book" mode,
 # and other books' audio in the dataset stays out of the manifest (books#27).
+# mode=manifest narrates nothing: it only rebuilds the named books' manifest entries from the audio
+# already in the dataset; there `books: all-existing` names every book with audio (books#31).
 
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: narrate (plan, narrate, publish) or manifest (only publish what is already uploaded)
+        type: choice
+        options: [narrate, manifest]
+        default: narrate
       voice:
         description: Kokoro voice id
         default: af_heart
       books:
-        description: Space-separated catalogue slugs to narrate, e.g. alice-in-wonderland (required)
+        description: Space-separated catalogue slugs, e.g. alice-in-wonderland (required); manifest mode also takes all-existing
         required: true
       force:
         description: Narrate these books again even where audio exists
@@ -34,6 +41,7 @@ env:
 
 jobs:
   plan:
+    if: inputs.mode == 'narrate'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -43,7 +51,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Require named books
-        run: '[ -n "${BOOKS// }" ] || { echo "::error::Name the books to narrate (books#27)"; exit 1; }'
+        run: |
+          [ -n "${BOOKS// }" ] || { echo "::error::Name the books to narrate (books#27)"; exit 1; }
+          [[ " $BOOKS " != *" all-existing "* ]] || { echo "::error::all-existing is for mode=manifest only (books#31)"; exit 1; }
       - run: pip install -q -r scripts/audio/requirements.txt
       - run: hf repos create "$REPO" --repo-type dataset --public --exist-ok
       - id: plan
@@ -83,13 +93,23 @@ jobs:
 
   manifest:
     needs: [plan, generate]
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    # After a narration (plan succeeded), or on its own in manifest mode (plan skipped)
+    if: >-
+      ${{ !cancelled() && (needs.plan.result == 'success'
+      || (inputs.mode == 'manifest' && needs.plan.result == 'skipped')) }}
     runs-on: ubuntu-latest
     steps:
+      - name: Require named books
+        run: |
+          [ -n "${BOOKS// }" ] || { echo "::error::Name the books, or all-existing (books#27)"; exit 1; }
+          [ "$BOOKS" = all-existing ] || [[ " $BOOKS " != *" all-existing "* ]] || { echo "::error::all-existing stands alone"; exit 1; }
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # ffprobe measures audio without timings
+      - run: sudo apt-get install -y -qq ffmpeg > /dev/null
       - run: pip install -q -r scripts/audio/requirements.txt
-      # Shards publish it as they go; this catches a shard that died before its last commit
+      # Shards publish it as they go; this catches a shard that died before its last commit.
+      # Manifest mode: publishes what is already in the dataset for the named books.
       - run: python scripts/audio/manifest.py web/public/catalog "$REPO" "$VOICE" $BOOKS
