@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { useAudioPlayer } from '../hooks/useAudioPlayer'
+import { useAudioPlayer, type AudioChapter } from '../hooks/useAudioPlayer'
 import { NavBar } from '../components/NavBar'
 import { PlayButton } from '../components/PlayButton'
 import { SaveOfflineButton, SaveOfflineError } from '../components/SaveOfflineButton'
-import { fetchSavedOr, playableManifest, useOnline } from '../hooks/offlineBooks'
+import { fetchChapters, playableManifest, useOnline } from '../hooks/offlineBooks'
 import { ChapterText, textOffset, topInset, type TextMark } from '../components/ChapterText'
 import { BookSearch, SEARCH_INPUT_ID } from '../components/BookSearch'
 import { KEEPS_KEYS } from '../components/KeyboardShortcuts'
@@ -39,18 +39,12 @@ function firstVisibleOffset(container: HTMLElement): number {
   return node && container.contains(node) ? textOffset(container, node, pos?.offset ?? range?.startOffset ?? 0) : 0
 }
 
-interface ReaderChapter {
-  id: string
-  title: string
-  content: string
-}
-
 export function ReaderPage() {
   const { slug } = useParams<{ slug: string }>()
   const [bookTitle, setBookTitle] = useState('')
   const [bookGenre, setBookGenre] = useState('')
   const [bookAuthor, setBookAuthor] = useState('')
-  const [chapters, setChapters] = useState<ReaderChapter[]>([])
+  const [chapters, setChapters] = useState<AudioChapter[]>([])
   const [activeChapter, setActiveChapter] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [notSavedOffline, setNotSavedOffline] = useState(false)
@@ -185,14 +179,7 @@ export function ReaderPage() {
 
     try {
       // A book saved for offline opens from this device (books#7)
-      const res = await fetchSavedOr(catalogBook.contentPath)
-      if (!res.ok) throw new Error('Failed to load')
-      const data = await res.json() as { chapters: { title: string; content: string }[] }
-      const chaptersList = data.chapters.map((ch, i) => ({
-        id: `ch-${i}`,
-        title: ch.title,
-        content: ch.content,
-      }))
+      const chaptersList = await fetchChapters(catalogBook.contentPath)
       setChapters(chaptersList)
       const saved = getProgress(bookSlug)
       // The chapter the player is on now isn't one to follow to

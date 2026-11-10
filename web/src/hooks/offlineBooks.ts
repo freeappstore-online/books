@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CATALOG } from '../data/catalog'
 import { coverUrl } from '../components/BookCover'
+import type { AudioChapter } from './useAudioPlayer'
 import {
   MANIFEST_URL, preparedCount, preparedUrl, preparedTimingsUrl, usePreparedManifest, type PreparedManifest,
 } from './preparedAudio'
@@ -123,6 +124,14 @@ export async function savedResponse(url: string): Promise<Response | undefined> 
 /** Fetch a book file from the saved copy when there is one, else from the network. */
 export async function fetchSavedOr(url: string): Promise<Response> {
   return (await savedResponse(url)) ?? fetch(url)
+}
+
+/** A catalogue book's chapters, from the saved copy when there is one; throws when they can't be loaded. */
+export async function fetchChapters(contentPath: string): Promise<AudioChapter[]> {
+  const res = await fetchSavedOr(contentPath)
+  if (!res.ok) throw new Error(`${res.status} for ${contentPath}`)
+  const data = await res.json() as { chapters: { title: string; content: string }[] }
+  return data.chapters.map((ch, i) => ({ id: `ch-${i}`, title: ch.title, content: ch.content }))
 }
 
 /** Estimated download size of a book's narration in this voice. */

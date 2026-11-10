@@ -5,7 +5,7 @@ import { getNarrationTime, primeNarration, useNarrationPosition } from '../hooks
 import { chapterSeconds, isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
 import { useNavigate } from 'react-router-dom'
 import { CATALOG } from '../data/catalog'
-import { fetchSavedOr, usePlayableManifest } from '../hooks/offlineBooks'
+import { fetchChapters, usePlayableManifest } from '../hooks/offlineBooks'
 
 export function AudioPlayer() {
   const {
@@ -52,14 +52,7 @@ export function AudioPlayer() {
     primeNarration()
 
     try {
-      const res = await fetchSavedOr(catalogBook.contentPath)
-      if (!res.ok) return
-      const data = await res.json() as { chapters: { title: string; content: string }[] }
-      const chapters = data.chapters.map((ch, i) => ({
-        id: `ch-${i}`,
-        title: ch.title,
-        content: ch.content,
-      }))
+      const chapters = await fetchChapters(catalogBook.contentPath)
       loadAndPlay({ slug, title: catalogBook.title, author: catalogBook.author, chapters })
       navigate(`/read/${slug}`)
     } catch { /* ignore */ }

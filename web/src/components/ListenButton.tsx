@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { primeNarration } from '../hooks/narration'
-import { fetchSavedOr } from '../hooks/offlineBooks'
+import { fetchChapters } from '../hooks/offlineBooks'
 import type { CatalogBook } from '../data/catalog'
 
 /** Resume listening to a book where it stopped, and open it in the reader (books#13). */
@@ -13,10 +13,7 @@ export function ListenButton({ book, className }: { book: CatalogBook; className
     // Synchronously, while this is still the user's click (iOS)
     primeNarration()
     try {
-      const res = await fetchSavedOr(book.contentPath)
-      if (!res.ok) throw new Error('Failed to load')
-      const data = await res.json() as { chapters: { title: string; content: string }[] }
-      const chapters = data.chapters.map((ch, i) => ({ id: `ch-${i}`, title: ch.title, content: ch.content }))
+      const chapters = await fetchChapters(book.contentPath)
       player.loadAndPlay({ slug: book.id, title: book.title, author: book.author, chapters })
     } catch { /* Opens the reader anyway, which explains what is missing */ }
     navigate(`/read/${book.id}`)

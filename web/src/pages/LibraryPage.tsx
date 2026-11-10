@@ -10,7 +10,7 @@ import { AnnotationList } from '../components/Annotations'
 import { annotationsMarkdown, downloadMarkdown, useAllAnnotations } from '../hooks/annotations'
 import { isNarrated, usePreparedManifest } from '../hooks/preparedAudio'
 import {
-  checkSavedText, fetchSavedOr, formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, updateReason,
+  checkSavedText, fetchChapters, formatBytes, removeSavedBook, saveBook, savedAudioChapters, savedBytes, updateReason,
   useOfflineBooks, useOnline, usePlayableManifest,
 } from '../hooks/offlineBooks'
 
@@ -132,10 +132,8 @@ function BookNotes() {
 
   const exportBook = async (slug: string, title: string, author: string) => {
     // Chapter titles from the book, when it can be loaded
-    const titles = await fetchSavedOr(CATALOG.find(b => b.id === slug)!.contentPath)
-      .then(r => (r.ok ? r.json() : null))
-      .then((d: { chapters: { title: string }[] } | null) => d?.chapters.map(c => c.title) ?? [])
-      .catch(() => [])
+    const titles = await fetchChapters(CATALOG.find(b => b.id === slug)!.contentPath)
+      .then(chapters => chapters.map(c => c.title), () => [])
     downloadMarkdown(`${slug}-notes.md`, annotationsMarkdown(title, author, titles, all[slug]))
   }
 
