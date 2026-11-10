@@ -89,6 +89,12 @@ class Segments(unittest.TestCase):
         self.assertEqual([text[s:e] for s, e, _ in sentences(text)],
                          ["“Oh dear!” said the Rabbit.", "Mr. Smith left.", "Next."])
 
+    def test_an_initial_does_not_end_a_sentence_but_i_does(self):
+        # The Wizard of Oz introduction's signature was narrated as "L." + pause + "Frank Baum" (books#33)
+        text = "Left out.\n\nL. Frank Baum\nChicago, April, 1900.\n\nIt was I. Then N.B. Go."
+        self.assertEqual([text[s:e] for s, e, _ in sentences(text)],
+                         ["Left out.", "L. Frank Baum\nChicago, April, 1900.", "It was I.", "Then N.B. Go."])
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())
