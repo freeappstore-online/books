@@ -11,11 +11,11 @@ interface Props {
 }
 
 export function NavBar({ title, subtitle, actions }: Props) {
-  const location = useLocation()
+  const pathname = useLocation().pathname.replace(/\/+$/, '') || '/'
 
-  const isHome = location.pathname === '/'
-  const pageTitle = isHome ? 'Books' : location.pathname === '/library' ? 'My books'
-    : location.pathname === '/settings' ? 'Settings' : null
+  const isHome = pathname === '/'
+  const pageTitle = isHome ? 'Books' : pathname === '/library' ? 'My books'
+    : pathname === '/settings' ? 'Settings' : null
   const showTitle = Boolean(title && title !== pageTitle)
   const online = useOnline()
 
@@ -35,15 +35,15 @@ export function NavBar({ title, subtitle, actions }: Props) {
           <nav aria-label="Main" className="hidden md:flex items-center gap-4 text-sm whitespace-nowrap">
             <Link
               to="/library"
-              aria-current={location.pathname === '/library' ? 'page' : undefined}
-              className={`transition ${location.pathname === '/library' ? 'text-text font-medium' : 'text-text-muted hover:text-text'}`}
+              aria-current={pathname === '/library' ? 'page' : undefined}
+              className={`transition ${pathname === '/library' ? 'text-text font-medium' : 'text-text-muted hover:text-text'}`}
             >
               My books
             </Link>
             <Link
               to="/settings"
-              aria-current={location.pathname === '/settings' ? 'page' : undefined}
-              className={`transition ${location.pathname === '/settings' ? 'text-text font-medium' : 'text-text-muted hover:text-text'}`}
+              aria-current={pathname === '/settings' ? 'page' : undefined}
+              className={`transition ${pathname === '/settings' ? 'text-text font-medium' : 'text-text-muted hover:text-text'}`}
             >
               Settings
             </Link>
@@ -80,19 +80,19 @@ export function NavBar({ title, subtitle, actions }: Props) {
         <nav aria-label="Main" className="flex md:hidden items-center shrink-0">
           <Link
             to="/library"
-            className={`w-10 h-10 flex items-center justify-center rounded-lg transition ${location.pathname === '/library' ? 'text-text' : 'text-text-dim hover:text-text-muted'}`}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg transition ${pathname === '/library' ? 'text-text' : 'text-text-dim hover:text-text-muted'}`}
             title="My books"
             aria-label="My books"
-            aria-current={location.pathname === '/library' ? 'page' : undefined}
+            aria-current={pathname === '/library' ? 'page' : undefined}
           >
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
           </Link>
           <Link
             to="/settings"
-            className={`w-10 h-10 flex items-center justify-center rounded-lg transition ${location.pathname === '/settings' ? 'text-text' : 'text-text-dim hover:text-text-muted'}`}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg transition ${pathname === '/settings' ? 'text-text' : 'text-text-dim hover:text-text-muted'}`}
             title="Settings"
             aria-label="Settings"
-            aria-current={location.pathname === '/settings' ? 'page' : undefined}
+            aria-current={pathname === '/settings' ? 'page' : undefined}
           >
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
           </Link>
