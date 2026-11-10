@@ -1,0 +1,57 @@
+name: Catalogue pipeline
+
+# Guards the catalogue's texts (books#38): unit and consistency tests of the pipeline scripts,
+# and a rebuild of every book from its locked Gutenberg source, compared with the committed
+# web/public/catalog/<slug>.json. A hand edit of a catalogue file, or a change to fetch.py that
+# re-splits a book (which would misalign its narration, keyed by chapter), fails here.
+# How to run the same checks locally: docs/catalogue-pipeline.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'web/public/catalog/**'
+      - 'web/public/covers/**'
+      - 'web/src/data/**'
+      - '.github/workflows/pipeline.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'web/public/catalog/**'
+      - 'web/public/covers/**'
+      - 'web/src/data/**'
+      - '.github/workflows/pipeline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Pipeline tests and rebuild check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q Pillow huggingface_hub
+      - name: Unit and consistency tests
+        run: |
+          python scripts/catalog/test_catalog.py
+          cd scripts/audio && python test_audio.py
+      # The Gutenberg files are cached between runs; a cold cache downloads them at ~1 per second.
+      # sources.lock.json pins each file, so a file Gutenberg has re-released fails the check.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/books-gutenberg
+          key: gutenberg-${{ hashFiles('scripts/catalog/sources.lock.json') }}
+          restore-keys: gutenberg-
+      - name: Rebuild every book and compare with the committed files
+        run: python scripts/catalog/fetch.py ~/.cache/books-gutenberg --check

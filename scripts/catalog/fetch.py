@@ -1,20 +1,29 @@
 """Build the catalogue's book texts from Project Gutenberg (books#5).
 
-usage: fetch.py CACHE_DIR [SLUG...]
+usage: fetch.py CACHE_DIR [--check | --relock] [SLUG...]
 Downloads each book's plain text into CACHE_DIR (once, ~1 req/s), keeps only the text between
 the `*** START/END OF` markers, drops front and back matter, splits on the book's own headings
 and writes web/public/catalog/<slug>.json = {"chapters": [{"title", "content"}]}. Then updates
 `chapters` and `readTime` in web/src/data/catalog.ts from the files. No caps: whole books.
 
+Builds are reproducible (books#38): sources.lock.json pins the SHA-256 of every Gutenberg file a
+book is built from, so a file Gutenberg re-releases stops the build instead of silently changing a
+book (and misaligning its narration, which is keyed by chapter index). --relock accepts the new
+files after you have reviewed the result. --check rebuilds the books in memory and compares them
+with the committed web/public/catalog/<slug>.json, writing nothing; it exits 1 on any difference,
+so a hand edit of a catalogue file or a change to this script that re-splits a book is caught.
+
 Content is what the reader shows and TTS reads verbatim, so headings, licence text, tables of
 contents and markup never reach it. Paragraphs are separated by a blank line; prose is unwrapped,
 verse keeps its line breaks.
 """
-import json, os, re, sys, time, urllib.request
+import hashlib, json, os, re, sys, time, urllib.request
+from concurrent.futures import ProcessPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT_DIR = os.path.join(ROOT, "web/public/catalog")
 CATALOG_TS = os.path.join(ROOT, "web/src/data/catalog.ts")
+LOCK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sources.lock.json")
 USER_AGENT = "freeappstore-books/1.0 (+https://github.com/freeappstore-online/books)"
 WORDS_PER_MIN = 250
 
@@ -39,6 +48,9 @@ UNSOURCED = {"as-i-lay-dying", "red-harvest", "to-the-lighthouse"}
 #   cut:   [(start regex, end regex)]: remove every run of lines from a start line to the next end line
 #   gloss: remove Purves' marginal glosses and note references (Chaucer)
 #   strip: regex of whole lines to remove (running heads, part dividers...)
+#   verse: a poetry book: a block whose lines all start with a capital keeps its line breaks even
+#          when they fill the wrap width (long rhymed lines: "The Raven"); elsewhere such a block
+#          is prose that happens to wrap at capitals and is unwrapped
 # A text with no headings at all is split at paragraph boundaries into ~20k-char parts.
 BOOKS = {
     "alice-in-wonderland": (11, {}),
@@ -148,7 +160,7 @@ BOOKS = {
     "lady-chatterleys-lover": (73144, {}),
     "the-maltese-falcon": (77600, {"heads": r"(?P<num>\d{1,2})"}),
     "bambi": (72577, {}),
-    "cane": (60093, {"toc": True}),
+    "cane": (60093, {"toc": True, "verse": True}),
     "north-of-boston": (3026, {"toc": True}),
     "the-red-house-mystery": (1872, {}),
     "autobiography-of-benjamin-franklin": (148, {"start": r"Twyford, at the Bishop of St\. Asaph.s,.*", "end": r"CHIEF EVENTS IN FRANKLIN.S LIFE\.?"}),
@@ -162,7 +174,7 @@ BOOKS = {
     "the-canterbury-tales": (2383, {"start": r"THE PROLOGUE\.", "first": "The General Prologue", "end": r"THE END OF THE CANTERBURY TALES", "gloss": True, "cut": [(r"Notes to .*", r"(?:THE|CHAUCER’S) [A-ZŒ’ ]*TALE.*|\*?PRECES DE CHAUCERES.*")], "heads": r"(?P<fold>THE (?:PROLOGUE|TALE))\.? *|(?P<rest>(?:THE|CHAUCER’S) [A-ZŒ’ ]*TALE(?: OF [A-ZŒ ]+)?|PRECES DE CHAUCERES)\.? *", "heads_only": True}),
     "aesops-fables": (21, {"start": r"The Lion And The Mouse", "start_n": 1, "end": r"FOOTNOTES"}),
     "short-fiction-poe": ((2147, 2148, 2150), {"toc": True, "heads": r"(?P<rest>THE UNPARALLELED ADVENTURES OF ONE HANS PFAAL) ?", "drop": r"Preface|Life of Poe|Death of Poe|Death of Edgar A\. Poe"}),
-    "poetry-poe": (10031, {"start": r"POEMS OF LATER LIFE", "end": r"ESSAYS\.", "cut": [(r"NOTES\.", r"POEMS OF MANHOOD\.|SCENES FROM \"POLITIAN\.\"|POEMS OF YOUTH|DOUBTFUL POEMS\.|PROSE POEMS\.")], "heads": r"(?P<fold>(?:PART )?[IVX]+\.?)|(?P<rest>[A-Z][A-Z0-9 ,\x27\"’()—.!?;:-]{2,})", "heads_only": True, "drop": r"Note on Politian", "titles": {r"^An Unpublished Drama.*": "Scenes from Politian", r"^Letter to Mr\. B.*": "Letter to Mr. B——", r"[,.]$": ""}}),
+    "poetry-poe": (10031, {"verse": True, "start": r"POEMS OF LATER LIFE", "end": r"ESSAYS\.", "cut": [(r"NOTES\.", r"POEMS OF MANHOOD\.|SCENES FROM \"POLITIAN\.\"|POEMS OF YOUTH|DOUBTFUL POEMS\.|PROSE POEMS\.")], "heads": r"(?P<fold>(?:PART )?[IVX]+\.?)|(?P<rest>[A-Z][A-Z0-9 ,\x27\"’()—.!?;:-]{2,})", "heads_only": True, "drop": r"Note on Politian", "titles": {r"^An Unpublished Drama.*": "Scenes from Politian", r"^Letter to Mr\. B.*": "Letter to Mr. B——", r"[,.]$": ""}}),
     "hemingway-short-fiction": ((
         (59603, {"start": r"UP IN MICHIGAN", "start_n": 1, "end": r"MITRAIGLIATRICE",  # the stories, not the poems
                  "heads": r"(?P<rest>UP IN MICHIGAN|OUT OF SEASON|MY OLD MAN)", "heads_only": True}),
@@ -310,6 +322,36 @@ BOOKS = {
 
 # ── Download ──
 
+class Lock:
+    """sources.lock.json: Gutenberg id -> SHA-256 of the file its book was built from."""
+
+    def __init__(self, mode: str = "verify"):  # verify | record (add new ids) | relock (accept changes)
+        self.mode = mode
+        self.hashes = json.load(open(LOCK_PATH)) if os.path.exists(LOCK_PATH) else {}
+        self.dirty = False
+
+    def check(self, gid: int, data: bytes):
+        digest, known = hashlib.sha256(data).hexdigest(), self.hashes.get(str(gid))
+        if known == digest:
+            return
+        if known is None and self.mode in ("record", "relock") or self.mode == "relock":
+            self.hashes[str(gid)] = digest
+            self.dirty = True
+            return
+        what = "is not in sources.lock.json" if known is None else "differs from the one in sources.lock.json"
+        raise SystemExit(f"pg{gid}.txt {what}: Gutenberg may have re-released it. Rebuild the book, review "
+                         f"the result (and its narration, which is keyed by chapter), then run with --relock.")
+
+    def save(self):
+        if self.dirty:
+            with open(LOCK_PATH, "w") as f:
+                json.dump(dict(sorted(self.hashes.items(), key=lambda kv: int(kv[0]))), f, indent=0)
+                f.write("\n")
+
+
+LOCK = Lock()
+
+
 def download(cache: str, gid: int) -> str:
     path = os.path.join(cache, f"pg{gid}.txt")
     if not os.path.exists(path):
@@ -319,8 +361,9 @@ def download(cache: str, gid: int) -> str:
         with open(path, "wb") as f:
             f.write(data)
         time.sleep(1)
-    with open(path, encoding="utf-8-sig") as f:
-        return f.read()
+    data = open(path, "rb").read()
+    LOCK.check(gid, data)
+    return data.decode("utf-8-sig")
 
 
 def gutenberg_body(raw: str) -> str:
@@ -412,20 +455,24 @@ def clean_inline(text: str) -> str:
     return text
 
 
-def is_verse(lines: list[str]) -> bool:
+def is_verse(lines: list[str], verse: bool = False) -> bool:
     """A block is verse (keep its line breaks) when its lines start with capitals, as verse lines
     do and wrapped prose lines don't, or when they mostly stop short of the wrap width and only
     rarely start in lowercase."""
     if len(lines) < 2:
         return False
     lower = sum(1 for l in lines[1:] if l.strip()[:1].islower()) / (len(lines) - 1)
-    if lower == 0 and len(lines) >= 3:
+    # prose wrapped at capitals ("replied the / Scarecrow;"): lines filled to the wrap width, some
+    # breaking mid-phrase; verse lines end in punctuation or run past the width (Whitman)
+    body = [l.strip() for l in lines[:-1]]
+    wrapped = not verse and all(60 <= len(l) <= 80 for l in body) and any(re.search(r"\w$", l) for l in body)
+    if lower == 0 and len(lines) >= 3 and not wrapped:
         return True
     short = sum(1 for l in lines[:-1] if len(l.strip()) < 55) / (len(lines) - 1)
     return short > 0.5 and lower < 0.2
 
 
-def unwrap(block: str) -> str:
+def unwrap(block: str, verse: bool = False) -> str:
     lines = [l.rstrip() for l in block.split("\n") if l.strip()]
     indent = min(len(l) - len(l.lstrip()) for l in lines)
     joined = []
@@ -435,13 +482,13 @@ def unwrap(block: str) -> str:
         else:
             joined.append(l)
     lines = joined
-    if is_verse(lines):
+    if is_verse(lines, verse):
         return "\n".join(re.sub(r"\s+", " ", l.strip()) for l in lines)
     return re.sub(r"\s+", " ", " ".join(l.strip() for l in lines)).strip()
 
 
-def blocks_to_content(blocks: list[str]) -> str:
-    paras = [unwrap(b) for b in blocks]
+def blocks_to_content(blocks: list[str], verse: bool = False) -> str:
+    paras = [unwrap(b, verse) for b in blocks]
     # section numbers ("1.", "II") between paragraphs are headings, not text
     return "\n\n".join(p for p in paras if re.search(r"\w", p) and not re.fullmatch(r"[IVXLC\d]+\.?", p))
 
@@ -654,7 +701,7 @@ def split_book(body: str, opts: dict) -> list[dict]:
 
     first = next((k for k, s in enumerate(sections) if has_text(s[2])), None)
     if first is None:
-        return split_long([{"title": "", "content": blocks_to_content(pre)}]) if pre else []
+        return split_long([{"title": "", "content": blocks_to_content(pre, opts.get("verse", False))}]) if pre else []
     # (with at most a line or two under them: a contents list there is front matter)
     while first > 0 and sections[first - 1][0] < sections[first][0] \
             and all(x.count("\n") < 3 for x in sections[first - 1][2]) and not has_text(sections[first - 1][2]):
@@ -705,7 +752,7 @@ def split_book(body: str, opts: dict) -> list[dict]:
         for c in chapters:
             if c["parent"]:
                 c["title"] = f"{c['parent'].split(':')[0]}, {c['title']}"
-    out = [{"title": c["title"], "content": blocks_to_content(c["blocks"])} for c in chapters]
+    out = [{"title": c["title"], "content": blocks_to_content(c["blocks"], opts.get("verse", False))} for c in chapters]
     out = [c for c in out if c["content"]]
     merged = []
     for c in out:  # a few lines (a short poem, an epigraph) join the chapter before
@@ -782,14 +829,54 @@ def build(cache: str, slug: str) -> list[dict]:
     return chapters
 
 
+def differences(built: list[dict], committed: list[dict]) -> list[str]:
+    """How a rebuilt book differs from its committed file, chapter by chapter (at most a few lines)."""
+    out = []
+    if len(built) != len(committed):
+        out.append(f"{len(committed)} chapters committed, {len(built)} built")
+    for i, (b, c) in enumerate(zip(built, committed)):
+        if b["title"] != c["title"]:
+            out.append(f"chapter {i} title: {c['title']!r} committed, {b['title']!r} built")
+        if b["content"] != c["content"]:
+            k = next((k for k, (x, y) in enumerate(zip(b["content"], c["content"])) if x != y),
+                     min(len(b["content"]), len(c["content"])))
+            out.append(f"chapter {i} text from char {k}: {c['content'][max(0, k - 30):k + 30]!r} committed, "
+                       f"{b['content'][max(0, k - 30):k + 30]!r} built")
+    return out[:6]
+
+
 def main():
-    cache, *slugs = sys.argv[1:]
+    args = sys.argv[1:]
+    check, relock = "--check" in args, "--relock" in args
+    cache, *slugs = [a for a in args if a not in ("--check", "--relock")]
+    unknown = [s for s in slugs if s not in BOOKS]
+    if unknown:
+        raise SystemExit(f"not in BOOKS: {' '.join(unknown)}")
+    LOCK.mode = "verify" if check else "relock" if relock else "record"
     os.makedirs(cache, exist_ok=True)
-    for slug in slugs or BOOKS:
-        chapters = build(cache, slug)
+    slugs = slugs or list(BOOKS)
+    for slug in slugs:  # downloads one at a time (Gutenberg's rate limit), checking the lock
+        for gid, _ in volumes(slug):
+            download(cache, gid)
+    LOCK.save()  # the build workers read the lock afresh
+    changed = []
+    with ProcessPoolExecutor() as pool:
+        built = pool.map(build, [cache] * len(slugs), slugs)
+    for slug, chapters in zip(slugs, built):
+        if check:
+            committed = json.load(open(os.path.join(OUT_DIR, f"{slug}.json"), encoding="utf-8"))["chapters"]
+            diff = differences(chapters, committed)
+            if diff:
+                changed.append(slug)
+                print(f"{slug}: DIFFERS\n" + "".join(f"    {d}\n" for d in diff), end="", flush=True)
+            continue
         with open(os.path.join(OUT_DIR, f"{slug}.json"), "w", encoding="utf-8") as f:
             json.dump({"chapters": chapters}, f, ensure_ascii=False, separators=(",", ":"))
         print(f"{slug}: {len(chapters)} chapters, {sum(len(c['content']) for c in chapters):,} chars", flush=True)
+    if check:
+        n = len(slugs)
+        print(f"{n - len(changed)} of {n} books match their committed files" + (f"; differ: {' '.join(changed)}" if changed else ""))
+        sys.exit(1 if changed else 0)
     update_catalog_ts()
 
 

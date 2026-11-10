@@ -71,10 +71,14 @@ exact `chapters: N,` / `readTime: '…',` shapes, so keep them.
 python3 scripts/catalog/fetch.py ~/.cache/books-gutenberg north-and-south
 ```
 
-This downloads the text once into the cache (at about one request per second), writes
-`web/public/catalog/north-and-south.json` and updates `chapters` and `readTime` in `catalog.ts`. If it
-fails with an `AssertionError` from `update_catalog_ts`, a `BOOKS` entry and a `catalog.ts` entry don't
-match up one-to-one.
+This downloads the text once into the cache (at about one request per second), records its SHA-256 in
+`scripts/catalog/sources.lock.json`, writes `web/public/catalog/north-and-south.json` and updates
+`chapters` and `readTime` in `catalog.ts`. If it fails with an `AssertionError` from `update_catalog_ts`,
+a `BOOKS` entry and a `catalog.ts` entry don't match up one-to-one.
+
+Never edit a `web/public/catalog/*.json` file by hand: the next rebuild would undo it, and CI's rebuild
+check fails on it. Fix the text with options in `BOOKS` (or in `fetch.py` itself, see
+[the pipeline guide](catalogue-pipeline.md)).
 
 ### 5. Check it
 
@@ -128,12 +132,17 @@ remove it from `SKIP`. `SOURCES` takes precedence over Gutenberg.
 pnpm --filter @freebooksapp/web exec tsc -b && pnpm build && du -sh web/dist
 ```
 
-(The root `pnpm test` script filters on `@books/web`, which matches no package, so it checks nothing.)
+Then run the pipeline's tests and rebuild check (the same as CI's *Catalogue pipeline* workflow):
+
+```bash
+python3 scripts/catalog/test_catalog.py
+python3 scripts/catalog/fetch.py ~/.cache/books-gutenberg --check
+```
 
 ### 8. Commit and push
 
-Commit the `fetch.py`, `covers.py`, `catalog.ts`, `covers.ts`, `web/public/catalog/<slug>.json` and
-`web/public/covers/<slug>.webp` changes, referencing the issue (`Refs #N`). A push to `main` deploys.
+Commit the `fetch.py`, `sources.lock.json`, `covers.py`, `catalog.ts`, `covers.ts`,
+`web/public/catalog/<slug>.json` and `web/public/covers/<slug>.webp` changes, referencing the issue (`Refs #N`). A push to `main` deploys.
 Add books in batches rather than one commit per book.
 
 ## Narration
