@@ -97,18 +97,21 @@ class Durations(unittest.TestCase):
 
 class Encoding(unittest.TestCase):
     def test_encode_normalises_loudness_without_moving_the_audio(self):
-        """-18 LUFS, true peak <= -1.5 dBTP, same length, nothing shifted: timings stay exact (books#37)."""
+        """-18 LUFS, true peak <= -1 dBTP, the band above 8 kHz kept, same length, nothing shifted:
+        timings stay exact (books#37)."""
         sr = 24_000
         t = np.arange(int(6.5 * sr)) / sr
-        # a quiet "voice" of tone bursts with a loud click, so the gain is limited by the peak
-        x = (0.05 * np.sin(2 * np.pi * 220 * t) * (np.sin(2 * np.pi * 1.5 * t) > 0)).astype(np.float32)
+        # a quiet "voice" of tone bursts with some 10 kHz "sibilance" and a loud click, so the gain is
+        # limited by the peak
+        x = ((0.05 * np.sin(2 * np.pi * 220 * t) + 0.01 * np.sin(2 * np.pi * 10_000 * t))
+             * (np.sin(2 * np.pi * 1.5 * t) > 0)).astype(np.float32)
         x[3 * sr] = 0.99
         with tempfile.TemporaryDirectory() as d:
             sf.write(f"{d}/in.wav", x, sr)
             encode(f"{d}/in.wav", f"{d}/out.m4a")
             lufs, peak = loudness(f"{d}/out.m4a")
             self.assertAlmostEqual(lufs, -18, delta=1)
-            self.assertLessEqual(peak, -1.5)
+            self.assertLessEqual(peak, -1.0)
             self.assertAlmostEqual(duration(f"{d}/out.m4a"), len(x) / sr, delta=0.001)
             y = np.frombuffer(subprocess.run(["ffmpeg", "-loglevel", "error", "-i", f"{d}/out.m4a", "-f", "f32le",
                                               "-ac", "1", "-ar", str(sr), "-"], capture_output=True, check=True).stdout,
@@ -118,6 +121,18 @@ class Encoding(unittest.TestCase):
             # the first burst starts where it did: compare the envelopes' onsets
             onset = lambda a: int(np.argmax(np.abs(a) > 0.5 * np.abs(a[: sr // 2]).max()))
             self.assertLessEqual(abs(onset(y) - onset(x)), 24)  # 1 ms
+            high = lambda a: (lambda f, p: p[f > 8000].sum() / p.sum())(np.fft.rfftfreq(len(a), 1 / sr),
+                                                                        np.abs(np.fft.rfft(a)) ** 2)
+            self.assertGreater(high(y), high(x) / 2)  # within 3 dB: no low-pass
+
+    def test_encode_to_a_given_loudness(self):
+        """--titles matches a book's older chapters, about -22 LUFS (books#37)."""
+        sr = 24_000
+        x = (0.05 * np.sin(2 * np.pi * 220 * np.arange(3 * sr) / sr)).astype(np.float32)
+        with tempfile.TemporaryDirectory() as d:
+            sf.write(f"{d}/in.wav", x, sr)
+            encode(f"{d}/in.wav", f"{d}/out.m4a", -22.3)
+            self.assertAlmostEqual(loudness(f"{d}/out.m4a")[0], -22.3, delta=0.7)
 
     def test_trim_keeps_a_little_silence_at_each_end(self):
         sr = 24_000

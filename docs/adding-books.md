@@ -168,8 +168,8 @@ The workflow runs three jobs:
 2. **generate** (`scripts/audio/generate.py`) runs one job per shard, at most 15 at once. It narrates
    each chapter with Kokoro v1.0 one sentence at a time
    (`scripts/audio/segments.py` splits them), joins them with short pauses, and encodes 40 kbps mono AAC
-   (8 kHz low-pass), loudness-normalised with a two-pass ffmpeg `loudnorm` to about **−18 LUFS** with a
-   true peak of at most **−1.5 dBTP** (books#37). The normalisation only changes the level: no sample
+   (full band, about 18 MB per hour), loudness-normalised with a two-pass ffmpeg `loudnorm` to about
+   **−18 LUFS** with a true peak of at most **−1 dBTP** (books#37). The normalisation only changes the level: no sample
    moves, so the timings stay exact. It also narrates the chapter's title as `<chapter>.title.m4a`: the
    catalogue title spoken ("Chapter 1: The Cyclone" → "Chapter One. The Cyclone.",
    `segments.spoken_title`), trimmed to at most 0.1 s of silence at each end, normalised the same way.
@@ -211,8 +211,9 @@ To add title clips to books narrated before they existed, without narrating thei
 dispatch with `mode=titles`. It plans only the chapters that have audio but no `<chapter>.title.m4a`
 (every narrated chapter with `force`), makes their clips, and rebuilds the manifest; `books` may be
 `all-existing`. A title takes about 2 s of runner time, so even every narrated book (~1,700 chapters)
-fits in one shard of about an hour. Their chapter audio keeps its old level (about −22 LUFS) until
-it is narrated again, so their titles are about 4 dB louder than the chapters.
+fits in one shard of about an hour. Each book's titles are made as loud as its published chapters
+(measured on one of them, about −22 LUFS for books narrated before books#37), so no title jumps out
+and no chapter is re-encoded.
 
 ```bash
 gh workflow run generate-audio.yml -R freeappstore-online/books -f mode=titles -f books=all-existing

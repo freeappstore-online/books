@@ -14,11 +14,14 @@ string indices) into the chapter's content in the catalogue.
 
 Chapters and titles are loudness-normalised to LUFS / MAX_PEAK (books#37) by a gain that keeps
 every sample where it was, so the timings stay exact. A title clip ("Chapter One. The Cyclone.",
-segments.spoken_title) keeps at most EDGE seconds of silence at either end.
+segments.spoken_title) keeps at most EDGE seconds of silence at either end. With --titles, a book's
+clips match the loudness of its chapters already published (one measured per book), so a book
+narrated before books#37 (about -22 LUFS) gets no jump at each title and its audio isn't re-encoded.
 """
 import json, os, re, shutil, subprocess, sys, time
 import numpy as np
 import soundfile as sf
+from huggingface_hub import hf_hub_url
 from manifest import publish
 from segments import sentences, spoken_title, utf16
 
@@ -26,9 +29,9 @@ UPLOAD_EVERY = 10 * 60
 SENTENCE_PAUSE = 0.4  # seconds; about what Kokoro leaves between sentences it narrates in one go
 PARAGRAPH_PAUSE = 0.8
 LUFS = -18.0  # integrated loudness: spoken-word apps aim for -16 to -19 (books#33 measured -22)
-MAX_PEAK = -1.5  # dBTP of the encoded file
-PEAK_TARGETS = (-3.0, -4.0, -5.0, -6.0)  # dBTP asked of loudnorm in turn: AAC adds 1-2 dB (encode())
-CUTOFF = 8000  # Hz; the encoder's low-pass
+MAX_PEAK = -1.0  # dBTP of the encoded file (the usual spoken-word ceiling)
+PEAK_TARGETS = (-3.0, -4.0, -5.0)  # dBTP asked of loudnorm in turn: AAC adds about 1 dB (encode())
+FALLBACK_CUTOFF = 8000  # Hz; a low-pass for audio whose peaks AAC still overshoots (encode())
 EDGE = 0.1  # seconds of silence kept before and after a title clip's speech
 OUT = "out"
 
@@ -68,17 +71,19 @@ def loudness(path: str) -> tuple[float, float]:
             float(re.search(r"Peak:\s+(-?[\d.]+|-inf) dBFS", summary)[1]))
 
 
-def encode(wav: str, m4a: str) -> None:
-    """wav as 40 kbps mono AAC at LUFS with a true peak <= MAX_PEAK: two-pass ffmpeg loudnorm.
+def encode(wav: str, m4a: str, lufs: float = LUFS) -> None:
+    """wav as 40 kbps mono AAC at lufs with a true peak <= MAX_PEAK: two-pass ffmpeg loudnorm.
 
     loudnorm applies one gain to the whole file when that keeps the peaks under its target, and
     otherwise a slowly varying one; either way no sample moves in time and the output has as many
-    samples as the input, so timings stay exact. AAC at this bitrate overshoots the peaks it is
-    given by 1-3 dB, mostly above CUTOFF, so the encoder leaves out that band (sibilance only) and
-    the peak target is lowered until the encoded file is under MAX_PEAK.
+    samples as the input, so timings stay exact. The full band (to 12 kHz) is kept: AAC overshoots
+    the peaks it is given by about 1 dB, so the peak target steps down until the encoded file is
+    under MAX_PEAK. Should it still overshoot, the last try also low-passes at FALLBACK_CUTOFF,
+    where most of the overshoot is (books#37 measured 40k full band against 48k and an 8 kHz cut).
     """
-    for peak in PEAK_TARGETS:
-        target = f"loudnorm=I={LUFS}:TP={peak}:LRA=11"
+    rate = sf.info(wav).samplerate
+    for peak, cutoff in [(p, None) for p in PEAK_TARGETS] + [(PEAK_TARGETS[0], FALLBACK_CUTOFF)]:
+        target = f"loudnorm=I={lufs}:TP={peak}:LRA=11"
         log = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", wav, "-af", f"{target}:print_format=json",
                               "-f", "null", "-"], check=True, capture_output=True, text=True).stderr
         m = json.loads(re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", log)[0])
@@ -86,11 +91,13 @@ def encode(wav: str, m4a: str) -> None:
                     f":measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
         # loudnorm works at 192 kHz; back to the input's rate, with timestamps counted from its samples
         # (else the container says the file is a frame longer than its audio)
-        back = f"aresample={sf.info(wav).samplerate},asetpts=N/SR/TB"
+        back = f"aresample={rate},asetpts=N/SR/TB"
         subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", wav, "-af", f"{target}:{measured},{back}",
-                        "-c:a", "aac", "-b:a", "40k", "-cutoff", str(CUTOFF), "-ac", "1", "-movflags", "+faststart",
-                        m4a], check=True)
+                        "-c:a", "aac", "-b:a", "40k", *(["-cutoff", str(cutoff)] if cutoff else []), "-ac", "1",
+                        "-movflags", "+faststart", m4a], check=True)
         if loudness(m4a)[1] <= MAX_PEAK:
+            if cutoff:
+                print(f"  {m4a}: low-passed at {cutoff} Hz to keep the true peak under {MAX_PEAK} dBTP", flush=True)
             return
     raise RuntimeError(f"{m4a}: true peak still above {MAX_PEAK} dBTP")
 
@@ -103,6 +110,7 @@ if __name__ == "__main__":
     lang = "en-gb" if voice[0] == "b" else "en-us"
     kokoro = Kokoro(f"{models}/kokoro-v1.0.onnx", f"{models}/voices-v1.0.bin")
     books: dict[str, list] = {}
+    level: dict[str, float] = {}  # --titles: the loudness of each book's published chapters
     last_upload = time.time()
 
     def upload(final: bool):
@@ -138,7 +146,10 @@ if __name__ == "__main__":
             samples, sr = kokoro.create(title, voice=voice, speed=1.0, lang=lang)
             samples = trim(samples, sr)
             sf.write(f"{dest}/{i}.title.wav", samples, sr)
-            encode(f"{dest}/{i}.title.wav", f"{dest}/{i}.title.m4a")
+            if titles_only and slug not in level:  # its first chapter in this run, read over HTTP
+                level[slug] = loudness(hf_hub_url(repo, f"{voice}/{slug}/{i}.m4a", repo_type="dataset"))[0]
+                print(f"{slug}: chapters at {level[slug]} LUFS", flush=True)
+            encode(f"{dest}/{i}.title.wav", f"{dest}/{i}.title.m4a", level.get(slug, LUFS))
             os.remove(f"{dest}/{i}.title.wav")
             print(f"{unit}: title {title!r}, {len(samples) / sr:.1f} s", flush=True)
         upload(final=False)
