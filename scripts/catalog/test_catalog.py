@@ -8,8 +8,9 @@ import json, os, re, sys, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fetch  # noqa: E402
-from covers import COVERS_TS, OUT_DIR as COVERS_DIR, SKIP, SOURCES  # noqa: E402
-from fetch import BOOKS, UNSOURCED, differences, is_verse, number, read_time, split_book, titlecase  # noqa: E402
+import books  # noqa: E402
+from covers import COVERS_TS, OUT_DIR as COVERS_DIR  # noqa: E402
+from fetch import BOOKS, differences, is_verse, number, read_time, split_book, titlecase  # noqa: E402
 
 
 class Helpers(unittest.TestCase):
@@ -118,37 +119,66 @@ class Lock(unittest.TestCase):
             lock.check(1, b"changed")
 
 
+class BookFiles(unittest.TestCase):
+    GOOD = {"title": "T", "author": "A", "author_bio": "B", "year": 1900, "genre": "Fiction", "tags": [],
+            "language": "en", "description": "D", "excerpt": "E", "look": {"gradient": "g", "accent": "a"},
+            "source": {"gutenberg": 1}}
+
+    def test_a_good_book_passes(self):
+        books._validate("x", self.GOOD)
+        books._validate("x", {**self.GOOD, "source": {"none": "kept"}, "cover": {"commons": "F.jpg", "crop": [0, 0, 1, 1]}})
+
+    def test_mistakes_are_named(self):
+        for change, message in [({"year": "1900"}, "year must be a int"),
+                                ({"subtitle": "S"}, "unknown key(s) subtitle"),
+                                ({"source": {"gutenberg": 1, "strat": "X"}}, "unknown [source] option(s) strat"),
+                                ({"source": {"gutenberg": 1, "none": "kept"}}, "exactly one of"),
+                                ({"cover": {"commons": "F.jpg", "none": "why"}}, "[cover] holds"),
+                                ({"look": {"gradient": "g"}}, "[look] needs")]:
+            with self.assertRaises(SystemExit) as e:
+                books._validate("x", {**self.GOOD, **change})
+            self.assertIn(message, str(e.exception))
+        with self.assertRaises(SystemExit) as e:
+            books._validate("x", {k: v for k, v in self.GOOD.items() if k != "excerpt"})
+        self.assertIn("missing excerpt", str(e.exception))
+
+    def test_source(self):
+        self.assertEqual(books.source(self.GOOD), (1, {}))
+        self.assertEqual(books.source({"source": {"gutenberg": [1, 2], "toc": True}}), ((1, 2), {"toc": True}))
+        self.assertEqual(books.source({"source": {"drop": "X", "volumes": [{"gutenberg": 1, "end": "E"}, {"gutenberg": 2}]}}),
+                         (((1, {"end": "E"}), (2, {})), {"drop": "X"}))
+        self.assertIsNone(books.source({"source": {"none": "kept"}}))
+
+
 class Consistency(unittest.TestCase):
-    """The catalogue's parts must agree: BOOKS, catalog.ts, the built files, covers and the lock."""
+    """The catalogue's parts must agree: the book files, books.json, the built texts, covers and the lock."""
 
-    @classmethod
-    def setUpClass(cls):
-        src = open(fetch.CATALOG_TS, encoding="utf-8").read()
-        cls.ids = re.findall(r"id: '([^']+)',[\s\S]*?contentPath", src)
-        cls.lock = json.load(open(fetch.LOCK_PATH))
+    def test_books_json_is_generated_from_the_book_files(self):
+        with open(books.APP_DATA, encoding="utf-8") as f:
+            self.assertEqual(f.read(), books.render_app_data(),
+                             "web/src/data/books.json is out of date: run python3 scripts/catalog/books.py")
 
-    def test_catalog_ts_lists_every_book_once(self):
-        self.assertEqual(len(self.ids), len(set(self.ids)))
-        self.assertEqual(set(self.ids), set(BOOKS) | UNSOURCED)
-
-    def test_every_book_has_its_file(self):
+    def test_every_book_has_its_text_and_no_text_is_orphaned(self):
         files = {f[:-5] for f in os.listdir(fetch.OUT_DIR) if f.endswith(".json")}
-        self.assertEqual(files, set(self.ids))
+        self.assertEqual(files, set(books.CATALOG))
 
     def test_every_source_is_locked(self):
+        with open(fetch.LOCK_PATH) as f:
+            lock = json.load(f)
         gids = {str(g) for slug in BOOKS for g, _ in fetch.volumes(slug)}
-        self.assertEqual(gids - set(self.lock), set())
+        self.assertEqual(gids - set(lock), set())
 
     def test_covers_ts_matches_the_cover_files(self):
         files = {f[:-5] for f in os.listdir(COVERS_DIR) if f.endswith(".webp")}
-        listed = set(re.findall(r"'([^']+)'", open(COVERS_TS, encoding="utf-8").read()))
+        with open(COVERS_TS, encoding="utf-8") as f:
+            listed = set(re.findall(r"'([^']+)'", f.read()))
         self.assertEqual(listed, files)
-        self.assertEqual(files - set(self.ids), set())
+        self.assertEqual(files - set(books.CATALOG), set())
 
-    def test_cover_overrides_name_catalogue_books(self):
-        self.assertEqual(set(SKIP) - set(self.ids), set())
-        self.assertEqual(set(SOURCES) - set(self.ids), set())
-        self.assertEqual(set(SKIP) & set(SOURCES), set())
+    def test_a_book_without_a_cover_says_why(self):
+        none = {s for s, b in books.CATALOG.items() if "none" in b.get("cover", {})}
+        files = {f[:-5] for f in os.listdir(COVERS_DIR) if f.endswith(".webp")}
+        self.assertEqual(none & files, set(), "a book with [cover] none has a cover file")
 
 
 if __name__ == "__main__":

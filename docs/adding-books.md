@@ -3,8 +3,8 @@
 A catalogue book is a whole Project Gutenberg text split into chapters, with optional pre-generated
 Kokoro narration. Adding one takes two steps:
 
-1. **Text:** `scripts/catalog/fetch.py` writes `web/public/catalog/<slug>.json`, then you push to `main`
-   and the app redeploys.
+1. **Text:** you describe the book in `catalog/books/<slug>.toml`, `scripts/catalog/fetch.py` writes
+   its text to `web/public/catalog/<slug>.json`, then you push to `main` and the app redeploys.
 2. **Narration:** the *Generate audio* workflow uploads `<voice>/<slug>/<chapter>.m4a`, its
    `<chapter>.timings.json` and its title clip `<chapter>.title.m4a` to the
    [`serge-ivo/books-audio`](https://huggingface.co/datasets/serge-ivo/books-audio) dataset on Hugging Face
@@ -14,7 +14,9 @@ Kokoro narration. Adding one takes two steps:
 Do step 2 only after the text is final on `main`, because audio files are keyed by chapter *index*
 (see [Changing a book after it is narrated](#changing-a-book-after-it-is-narrated)).
 
-You need Python 3 (`fetch.py` and `qa.py` use only the standard library), pnpm, and `gh`.
+You need Python 3.11 or later (`fetch.py`, `books.py` and `qa.py` use only the standard library), pnpm,
+and `gh`. The book file's format, and every split option, is documented in
+[catalog/README.md](../catalog/README.md).
 
 ## Text
 
@@ -27,60 +29,63 @@ You need Python 3 (`fetch.py` and `qa.py` use only the standard library), pnpm, 
   after 1955, the book is still in copyright in Australia and other life+70 countries. Say so in the
   issue.
 - Check the book isn't already in the catalogue under another title or Gutenberg ID:
-  `grep -n "<id>" scripts/catalog/fetch.py` and `grep -in "<title>" web/src/data/catalog.ts`.
+  `grep -rn "gutenberg = .*<id>" catalog/books` and `grep -il "<title>" catalog/books/*`.
 - Mind the deploy size. `web/dist` must stay under the platform's 250 MB per-app limit
   (`MAX_TOTAL_BYTES` in `freeappstore-online/platform` `packages/backend/src/routes/deploy.ts`), and no
   single file may exceed 25 MB. A book's JSON is roughly the size of its Gutenberg `.txt` file.
 
-### 2. Register it in `scripts/catalog/fetch.py`
+### 2. Write the book file
 
-Add an entry to `BOOKS`, mapping the slug to `(gutenberg_id, options)`:
+Create `catalog/books/<slug>.toml`. The slug becomes the book's id, its address (`/read/<slug>/`) and its
+narration folder, so choose it once: lowercase words joined by hyphens, usually the title without
+"the". Copy a similar book's file and change it:
 
-```python
-"north-and-south": (4276, {}),
-```
+```toml
+title = "North and South"
+author = "Elizabeth Gaskell"
+year = 1855
+genre = "Fiction"
+tags = ["classic", "romance", "british", "social commentary"]
+language = "en"
+author_bio = "…"
+description = "…"
+excerpt = "The opening line…"
 
-Start with `{}`. Add options only when step 5 shows a problem. The comment above `BOOKS` documents them
-(`start`, `end`, `heads`, `toc`, `drop`, `strip`, `titles`, …), and the existing entries are worked
-examples. A book published in several Gutenberg volumes takes a tuple of IDs, as `don-quixote` does:
+[look]
+gradient = "from-slate-900 to-zinc-950"
+accent = "#94A3B8"
 
-```python
-"the-portrait-of-a-lady": ((2833, 2834), {}),
-```
-
-### 3. Add the catalogue entry in `web/src/data/catalog.ts`
-
-Append a `CatalogBook` to `CATALOG`. Keep `id` equal to the slug, and write `chapters: 0,` and
-`readTime: '',` as placeholders: `fetch.py` fills both in from the generated file. It finds them by those
-exact `chapters: N,` / `readTime: '…',` shapes, so keep them.
-
-```ts
-{ id: 'north-and-south', title: 'North and South', author: 'Elizabeth Gaskell', authorBio: '…', year: 1855, genre: 'Fiction', tags: ['classic', 'romance', 'british', 'social commentary'], description: '…', excerpt: 'The opening line…', chapters: 0, readTime: '', coverGradient: 'from-slate-900 to-zinc-950', coverAccent: '#94A3B8', contentPath: '/catalog/north-and-south.json' },
+[source]
+gutenberg = 4276
 ```
 
 - `genre`: one of the existing values (`Fiction`, `Non-Fiction`, `Drama`, `Poetry`). The genre filter
-  is built from whatever values appear (`GENRES`), so a new value adds a new option to it.
+  is built from whatever values appear, so a new value adds a new option to it.
 - `year`: first publication year. Use a negative number for BCE, as `the-art-of-war` does.
-- `coverGradient` / `coverAccent`: a Tailwind `from-*-900 to-*-950` pair and a matching hex. Pick ones
-  that aren't already used by neighbouring books.
+- `[look]`: a Tailwind `from-*-900 to-*-950` pair and a matching hex. Pick ones that aren't already used
+  by books of the same author or genre.
 - `excerpt`: the book's real opening words, ending with `...`.
+- `[source]`: start with only `gutenberg`. Add split options only when step 4 shows a problem. A book
+  published in several Gutenberg ebooks lists them all: `gutenberg = [2833, 2834]`.
 
-### 4. Build the text
+The chapter count and reading time are not in the file: they are measured from the built text.
+
+### 3. Build the text
 
 ```bash
 python3 scripts/catalog/fetch.py ~/.cache/books-gutenberg north-and-south
 ```
 
 This downloads the text once into the cache (at about one request per second), records its SHA-256 in
-`scripts/catalog/sources.lock.json`, writes `web/public/catalog/north-and-south.json` and updates
-`chapters` and `readTime` in `catalog.ts`. If it fails with an `AssertionError` from `update_catalog_ts`,
-a `BOOKS` entry and a `catalog.ts` entry don't match up one-to-one.
+`scripts/catalog/sources.lock.json`, writes `web/public/catalog/north-and-south.json` and regenerates
+`web/src/data/books.json`, the list the app shows. A mistake in the book file (a missing or misspelt
+key) stops it with the file's name and what is wrong.
 
 Never edit a `web/public/catalog/*.json` file by hand: the next rebuild would undo it, and CI's rebuild
-check fails on it. Fix the text with options in `BOOKS` (or in `fetch.py` itself, see
+check fails on it. Fix the text with split options in the book's `[source]` (or in `fetch.py` itself, see
 [the pipeline guide](catalogue-pipeline.md)).
 
-### 5. Check it
+### 4. Check it
 
 ```bash
 python3 scripts/catalog/qa.py ~/.cache/books-gutenberg north-and-south
@@ -88,7 +93,7 @@ python3 scripts/catalog/qa.py ~/.cache/books-gutenberg north-and-south
 
 `qa.py` compares the output with the Gutenberg body and exits 1 if it flags a book: leftover licence
 text, `[Illustration]` markers, contents lists, a text much shorter than its source, or chapters that are
-too small or too large. Fix a flag with options in `BOOKS`. If the book deliberately leaves out more
+too small or too large. Fix a flag with split options in the book's `[source]`. If the book deliberately leaves out more
 than 10% (a translator's introduction, notes), add it to `SHORT_OK` with the reason.
 
 Then read it in the app (`pnpm dev`):
@@ -102,7 +107,7 @@ heading folds two chapters into one, or untitled "Part N" chapters start with th
 the chapter list of every book, not just a few. A quick way is to print each book's titles, its first 80
 and last 80 characters, and any gaps in the chapter numbers.
 
-### 6. Add the cover
+### 5. Add the cover
 
 ```bash
 cd scripts/catalog && python3 covers.py ~/.cache/books-covers north-and-south   # needs Pillow
@@ -110,23 +115,23 @@ cd scripts/catalog && python3 covers.py ~/.cache/books-covers north-and-south   
 
 `covers.py` downloads the Gutenberg cover (the full-size scan if there is one, otherwise the 200 px
 thumbnail), writes `web/public/covers/<slug>.webp` and regenerates `web/src/data/covers.ts`. A book
-with no cover shows its `coverGradient` instead.
+with no cover shows its `[look]` gradient instead.
 
 Look at every new cover. Many Gutenberg books only have a *generated placeholder*: the title in a white
-band over coloured geometric shapes, with a "Project Gutenberg" label. Add those slugs to `SKIP` in
-`covers.py` with the `GENERATED` reason, then run the script again for them. That deletes their `.webp`
-and drops them from `covers.ts`.
+band over coloured geometric shapes, with a "Project Gutenberg" label. Give those books a `[cover]`
+with `none = "Gutenberg's generated placeholder (title over abstract shapes, 'Project Gutenberg' label)"`,
+then run the script again for them. That deletes their `.webp` and drops them from `covers.ts`.
 
 For a book with no usable Gutenberg cover, look for a free one on Wikimedia Commons. It is usually the
 lead image of the book's Wikipedia article: the first-edition cover, its jacket or its title page. Use
 it only if the file is on Commons and marked *Public domain*. Leave it out if it is stored only on
 en.wikipedia (fair use), if it has a CC licence (it would need credit), or if it is a portrait, a
 painting or a film still rather than the book itself. An illustration from the first edition is fine,
-as with Pinocchio. Add the book to `SOURCES` in `covers.py` as
-`(file name, crop)` (crop is `None`, or fractions to cut a two-page spread down to its title page) and
-remove it from `SKIP`. `SOURCES` takes precedence over Gutenberg.
+as with Pinocchio. Set the book's `[cover]` to `commons = "<file name>"`, adding
+`crop = [left, top, right, bottom]` (fractions) to cut a two-page spread down to its title page, and run
+the script again for it.
 
-### 7. Typecheck and build
+### 6. Typecheck and build
 
 ```bash
 pnpm --filter @freebooksapp/web exec tsc -b && pnpm build && du -sh web/dist
@@ -136,13 +141,14 @@ Then run the pipeline's tests and rebuild check (the same as CI's *Catalogue pip
 
 ```bash
 python3 scripts/catalog/test_catalog.py
+python3 scripts/catalog/books.py --check
 python3 scripts/catalog/fetch.py ~/.cache/books-gutenberg --check
 ```
 
-### 8. Commit and push
+### 7. Commit and push
 
-Commit the `fetch.py`, `sources.lock.json`, `covers.py`, `catalog.ts`, `covers.ts`,
-`web/public/catalog/<slug>.json` and `web/public/covers/<slug>.webp` changes, referencing the issue (`Refs #N`). A push to `main` deploys.
+Commit `catalog/books/<slug>.toml`, `sources.lock.json`, `web/src/data/books.json`, `covers.ts`,
+`web/public/catalog/<slug>.json` and `web/public/covers/<slug>.webp`, referencing the issue (`Refs #N`). A push to `main` deploys.
 Add books in batches rather than one commit per book.
 
 ## Narration

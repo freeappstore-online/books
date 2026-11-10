@@ -1,0 +1,19 @@
+title = "Red Harvest"
+author = "Dashiell Hammett"
+year = 1929
+genre = "Fiction"
+tags = ["classic", "american", "noir", "crime", "hard-boiled"]
+language = 'en'
+author_bio = "American author of hard-boiled detective novels. Former Pinkerton detective."
+description = "A detective arrives in a corrupt mining town and proceeds to clean it up by turning the warring factions against each other, with bloody results."
+excerpt = "I first heard Personville called Poisonville by a red-haired mucker named Hickey Dewey in the Big Ship in Butte."
+
+[look]
+gradient = "from-red-900 to-neutral-950"
+accent = "#DC2626"
+
+[source]
+none = "Not on Project Gutenberg: the committed text is kept as it is."
+
+[cover]
+commons = "Red_Harvest_(1st_ed_cover).jpg"

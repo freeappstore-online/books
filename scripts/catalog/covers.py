@@ -1,9 +1,11 @@
-"""Self-host each catalogue book's Project Gutenberg cover (books#8).
+"""Self-host each catalogue book's cover (books#8, books#30).
 
 usage: covers.py CACHE_DIR [SLUG...]
-For each book in fetch.py's BOOKS (its first volume's id) downloads the cover into CACHE_DIR
-(once, sequentially, a pause between requests): the full-size scan `images/cover.jpg` when the
-ebook has one, else Gutenberg's `pg<id>.cover.medium.jpg` (200 px). Writes
+Each book's cover comes from its [cover] in catalog/books/<slug>.toml: `commons` names a Wikimedia
+Commons file (with an optional crop), `none` says why the book has no cover (the gradient is shown
+instead). With no [cover], it is the Gutenberg cover of the book's first volume: the full-size scan
+`images/cover.jpg` when the ebook has one, else `pg<id>.cover.medium.jpg` (200 px). Downloads go
+into CACHE_DIR (once, sequentially, a pause between requests). Writes
 web/public/covers/<slug>.webp (WIDTH px wide at most) and web/src/data/covers.ts, the list of
 books that have a cover. Needs Pillow.
 """
@@ -11,6 +13,7 @@ import io, os, sys, time, urllib.error, urllib.parse, urllib.request
 
 from PIL import Image
 
+from books import CATALOG
 from fetch import BOOKS, ROOT, USER_AGENT, volumes
 
 OUT_DIR = os.path.join(ROOT, "web/public/covers")
@@ -18,80 +21,15 @@ COVERS_TS = os.path.join(ROOT, "web/src/data/covers.ts")
 WIDTH = 384  # 2x the largest cover on screen (BookCover lg, 192 CSS px)
 QUALITY = 60  # no visible difference from 72 on the most detailed cover (Pride and Prejudice), 15% smaller
 
-# Covers reviewed by eye on a contact sheet and left out (the gradient is shown instead): slug -> reason.
-GENERATED = "Gutenberg's generated placeholder (title over abstract shapes, 'Project Gutenberg' label)"
-SKIP = {
-    "apology": GENERATED,
-    "barnaby-rudge": GENERATED,
-    "civil-disobedience": GENERATED,
-    "father-goriot": GENERATED,
-    "hedda-gabler": GENERATED,
-    "hemingway-short-fiction": "first volume's cover, 'Three Stories & Ten Poems', not this collection",
-    "jacobs-room": GENERATED,
-    "les-miserables": "a marbled board with no title on it",
-    "north-of-boston": GENERATED,
-    "our-mutual-friend": GENERATED,
-    "scaramouche": GENERATED,
-    "symposium": GENERATED,
-    "the-aeneid": GENERATED,
-    "the-analects": GENERATED,
-    "the-canterbury-tales": GENERATED,
-    "the-old-curiosity-shop": GENERATED,
-    "the-problems-of-philosophy": GENERATED,
-    "the-sorrows-of-young-werther": GENERATED,
-    "the-trial": GENERATED,
-    "utopia": GENERATED,
-}
+# Covers reviewed by eye on a contact sheet and left out: slug -> reason ([cover] none).
+SKIP = {slug: b["cover"]["none"] for slug, b in CATALOG.items() if "none" in b.get("cover", {})}
 
-
-# Covers taken from Wikimedia Commons instead (books#30), for books whose Gutenberg cover is in SKIP or
-# missing: slug -> (Commons file name, crop). Only public-domain files; each was checked by eye to be the
-# book's own cover or title page. crop is None or (left, top, right, bottom) as fractions of the image.
+# Covers from Wikimedia Commons (books#30), for books whose Gutenberg cover is a generated placeholder or
+# missing: slug -> (Commons file name, crop) ([cover] commons). Only public-domain files, each checked by
+# eye to be the book's own cover or title page. crop is None or (left, top, right, bottom) as fractions.
+SOURCES = {slug: (b["cover"]["commons"], tuple(b["cover"]["crop"]) if "crop" in b["cover"] else None)
+           for slug, b in CATALOG.items() if "commons" in b.get("cover", {})}
 COMMONS = "https://commons.wikimedia.org/wiki/Special:FilePath/"
-SOURCES = {
-    "a-little-princess": ('A_Little_Princess_cover.jpg', None),
-    "agnes-grey": ('Agnes_Grey.jpg', None),
-    "as-i-lay-dying": ('As_I_Lay_Dying_(1930_1st_ed_jacket_cover).jpg', None),
-    "candide": ('Candide1759.jpg', None),
-    "captain-blood": ('1922-captainblood-cover.jpg', None),
-    "captains-courageous": ('Rudyard_Kipling_-_Captains_Courageous,_first_US_Edition_(1897).jpg', None),
-    "dombey-and-son": ('Dombeyson_serial_cover.jpg', None),
-    "evelina": ('Evelina_title_page.jpg', None),
-    "hard-times": ('Hardtimes_serial_cover.jpg', None),
-    "heidi": ('Spyri_Heidi_Cover_1887.jpg', None),
-    "howards-end": ('Howards-End_1st-ed_cvr.jpg', None),
-    "just-so-stories": ('Just_So_Stories_Kipling_1902.jpg', None),
-    "lady-audleys-secret": ('Lady_Audleys_Secret_Cover.jpg', None),
-    "lord-jim": ('LordJimCover.jpg', None),
-    "lorna-doone": ('Lorna_Doone_by_RD_Blackmore,_first_edition_title_page_1869.png', None),
-    "main-street": ('MainStreetNovel.jpg', None),
-    "mansfield-park": ('MansfieldParkTitlePage.jpg', None),
-    "my-antonia": ('My_antonia.jpg', None),
-    "night-and-day": ('Night_and_Day_(Virginia_Woolf).JPG', None),
-    "pinocchio": ('Pinocchio.jpg', None),
-    "red-harvest": ('Red_Harvest_(1st_ed_cover).jpg', None),
-    "robinson-crusoe": ('Robinson_Crusoe_1719_1st_edition.jpg', (0.5, 0, 1, 1)),
-    "she": ('SHE,_A_History_of_Adventure_(1st_Edition_Cover),_by_H._Rider_Haggard.jpg', None),
-    "shirley": ('Shirley_a_tale_-_Page_n8.jpg', None),
-    "tess-of-the-durbervilles": ("Hardy_-_Tess_d'Urbervilles,_1891_-_3657925F.jpg", None),
-    "the-age-of-innocence": ('Age_of_Innocence_(1st_ed_dust_jacket).jpg', None),
-    "the-awakening": ('The_Awakening_(Chopin_novel)_cover.jpg', None),
-    "the-communist-manifesto": ('Communist-manifesto.png', None),
-    "the-great-god-pan": ('The_Great_God_Pan_Title_Page.jpg', None),
-    "the-house-of-the-seven-gables": ('The_House_of_the_Seven_Gables.jpg', None),
-    "the-lost-world": ('Lost_world.jpg', None),
-    "the-mysterious-island": ('Ile_Mysterieuse_02.jpg', None),
-    "the-portrait-of-a-lady": ('The_Portrait_of_a_lady_cover.jpg', None),
-    "the-railway-children": ('Nesbit-railway001.gif', None),
-    "the-scarlet-pimpernel": ('Thescarletpimpernel1908.jpg', None),
-    "the-secret-agent": ('SecretAgent.jpg', None),
-    "the-tenant-of-wildfell-hall": ('The_Tenant_of_Wildfell_Hall.jpg', None),
-    "the-voyage-out": ('The_Voyage_Out.jpg', None),
-    "the-woodlanders": ('The_Woodlanders.jpg', None),
-    "villette": ('Villette-Page_n8.jpg', None),
-    "winesburg-ohio": ('Winesburg,_Ohio_1st.jpg', None),
-    "women-in-love": ('Women_in_Love_(first_edition).jpg', None),
-}
 
 
 def get(url: str) -> bytes | None:
@@ -149,12 +87,12 @@ def main():
     cache, *slugs = sys.argv[1:]
     os.makedirs(cache, exist_ok=True)
     os.makedirs(OUT_DIR, exist_ok=True)
-    for slug in slugs or BOOKS:
+    for slug in slugs or CATALOG:
         out = os.path.join(OUT_DIR, f"{slug}.webp")
         if slug in SOURCES:
             data = download_commons(cache, slug)
-        else:
-            data = None if slug in SKIP else download(cache, volumes(slug)[0][0])
+        else:  # a book not on Gutenberg has a cover only from Commons
+            data = None if slug in SKIP or slug not in BOOKS else download(cache, volumes(slug)[0][0])
         if data is None:
             if os.path.exists(out):
                 os.remove(out)

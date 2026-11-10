@@ -18,7 +18,7 @@ async function dataModule(path) {
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText
   return import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`)
 }
-const { CATALOG } = await dataModule('web/src/data/catalog.ts')
+const CATALOG = JSON.parse(readFileSync(resolve(root, 'web/src/data/books.json'), 'utf8'))  // generated from catalog/books/*.toml
 const { COVERS } = await dataModule('web/src/data/covers.ts')
 const APP = 'https://books.freeappstore.online'
 const SITE = 'https://books.freewebstore.online/'

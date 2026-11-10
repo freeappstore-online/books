@@ -1,0 +1,19 @@
+title = "As I Lay Dying"
+author = "William Faulkner"
+year = 1930
+genre = "Fiction"
+tags = ["classic", "american", "modernist", "southern-gothic", "family"]
+language = 'en'
+author_bio = "American novelist. Nobel Prize in Literature 1949. Master of experimental narrative and the American South."
+description = "A poor Mississippi family hauls their mother's coffin across the countryside to bury her in her hometown, each family member narrating their darkly comic journey."
+excerpt = "Jewel and I come up from the field, following the path in single file."
+
+[look]
+gradient = "from-yellow-900 to-amber-950"
+accent = "#CA8A04"
+
+[source]
+none = "Not on Project Gutenberg: the committed text is kept as it is."
+
+[cover]
+commons = "As_I_Lay_Dying_(1930_1st_ed_jacket_cover).jpg"

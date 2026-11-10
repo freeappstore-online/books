@@ -4,13 +4,18 @@ How the catalogue's texts are built, how a build is kept reproducible, and how t
 pipeline without breaking published books or their narration. To add a book, follow
 [adding-books.md](adding-books.md). The plan to make the pipeline multi-language is books#38.
 
+Each book is described once, in `catalog/books/<slug>.toml`: its metadata, its source and split
+options, and its cover. The format is documented in [catalog/README.md](../catalog/README.md).
+`scripts/catalog/books.py` loads and validates those files; every other script reads the books
+through it.
+
 ## What it produces
 
 | Output | Made by | From |
 |---|---|---|
-| `web/public/catalog/<slug>.json`: `{"chapters": [{"title", "content"}]}` | `scripts/catalog/fetch.py` | the Gutenberg plain text, and the book's options in `BOOKS` |
-| `chapters` and `readTime` in `web/src/data/catalog.ts` | `fetch.py` | the built files |
-| `web/public/covers/<slug>.webp` and `web/src/data/covers.ts` | `scripts/catalog/covers.py` | the Gutenberg cover, or `SOURCES` (Wikimedia Commons) |
+| `web/public/catalog/<slug>.json`: `{"chapters": [{"title", "content"}]}` | `scripts/catalog/fetch.py` | the Gutenberg plain text, and the book's `[source]` |
+| `web/src/data/books.json`, the list the app shows (`CATALOG` in `catalog.ts`) | `scripts/catalog/books.py`, run by `fetch.py` after a build | the book files, plus each book's chapter count and reading time measured from its text |
+| `web/public/covers/<slug>.webp` and `web/src/data/covers.ts` | `scripts/catalog/covers.py` | the Gutenberg cover, or the book's `[cover]` (Wikimedia Commons, or none) |
 | narration on Hugging Face (`<voice>/<slug>/<chapter>.m4a` and `.timings.json`) | `scripts/audio/` via the *Generate audio* workflow | the built files |
 
 A chapter's `content` is exactly what the reader shows and what the narration reads. Narration
@@ -39,12 +44,15 @@ So once a book is narrated:
   It caches the Gutenberg files between runs.
 
 `scripts/catalog/test_catalog.py` holds the unit tests. Its consistency tests check that:
-- `BOOKS`, `catalog.ts`, the built files, `covers.ts`, the cover files, `SKIP`/`SOURCES` and the
-  lock all agree;
+- `books.json` is exactly what the book files generate (so it was not edited by hand, and no one
+  forgot to regenerate it after editing a book file);
+- every book has its text and every text has its book;
+- `covers.ts` lists exactly the cover files, and no book marked `[cover] none` has one;
 - every source is locked.
 
 ```bash
 python3 scripts/catalog/test_catalog.py                            # needs Pillow
+python3 scripts/catalog/books.py --check                           # books.json up to date
 python3 scripts/catalog/fetch.py ~/.cache/books-gutenberg --check   # downloads missing sources first
 ```
 
