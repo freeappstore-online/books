@@ -50,10 +50,17 @@ jobs:
           cd scripts/audio && python test_audio.py
       # The Gutenberg files are cached between runs; a cold cache downloads them at ~1 per second.
       # sources.lock.json pins each file, so a file Gutenberg has re-released fails the check.
-      - uses: actions/cache@v4
+      # Saved even when the check fails, so a download Gutenberg cut short is resumed next run
+      # instead of starting cold again; a new key per run, restored from the latest one.
+      - uses: actions/cache/restore@v4
         with:
           path: ~/.cache/books-gutenberg
-          key: gutenberg-${{ hashFiles('scripts/catalog/sources.lock.json') }}
+          key: gutenberg-${{ github.run_id }}
           restore-keys: gutenberg-
       - name: Rebuild every book and compare with the committed files
         run: python scripts/catalog/fetch.py ~/.cache/books-gutenberg --check
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/books-gutenberg
+          key: gutenberg-${{ github.run_id }}

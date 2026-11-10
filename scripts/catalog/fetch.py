@@ -327,7 +327,10 @@ class Lock:
 
     def __init__(self, mode: str = "verify"):  # verify | record (add new ids) | relock (accept changes)
         self.mode = mode
-        self.hashes = json.load(open(LOCK_PATH)) if os.path.exists(LOCK_PATH) else {}
+        self.hashes = {}
+        if os.path.exists(LOCK_PATH):
+            with open(LOCK_PATH) as f:
+                self.hashes = json.load(f)
         self.dirty = False
 
     def check(self, gid: int, data: bytes):
@@ -357,11 +360,19 @@ def download(cache: str, gid: int) -> str:
     if not os.path.exists(path):
         url = f"https://www.gutenberg.org/cache/epub/{gid}/pg{gid}.txt"
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        data = urllib.request.urlopen(req, timeout=120).read()
+        for attempt in range(5):  # Gutenberg drops connections under load; back off and retry
+            try:
+                data = urllib.request.urlopen(req, timeout=120).read()
+                break
+            except OSError as e:  # URLError, RemoteDisconnected, timeouts
+                if attempt == 4:
+                    raise SystemExit(f"pg{gid}.txt: download failed after 5 attempts: {e}")
+                time.sleep(5 * 2 ** attempt)
         with open(path, "wb") as f:
             f.write(data)
         time.sleep(1)
-    data = open(path, "rb").read()
+    with open(path, "rb") as f:
+        data = f.read()
     LOCK.check(gid, data)
     return data.decode("utf-8-sig")
 
