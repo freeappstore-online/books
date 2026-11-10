@@ -21,6 +21,14 @@ SHORT_OK = {
     "aesops-fables": "Townsend's preface and the 'Life of Aesop' are left out",
     "poetry-poe": "Ingram's memoir and notes and Poe's essays are left out",
     "the-canterbury-tales": "only the Tales from Purves' 'Canterbury Tales and Other Poems', without his glosses and notes",
+    "rob-roy": "Scott's 1829 introduction and its appendix, Lang's editor's introduction, the postscript and notes are left out",
+    "symposium": "Jowett's introduction is left out",
+    "apology": "Jowett's introduction is left out",
+    "faust": "Bayard Taylor's preface and his German dedication to Goethe are left out",
+    "hedda-gabler": "William Archer's introduction and the list of characters are left out",
+    "doctor-faustus": "the editor's footnotes are left out",
+    "on-liberty": "W. L. Courtney's introduction and the footnotes are left out",
+    "the-enchiridion": "Albert Salomon's introduction, the bibliography and the footnotes are left out",
 }
 LEFTOVER = [
     ("gutenberg", r"Project Gutenberg|gutenberg\.(?:org|net)|\bPG\b"),
