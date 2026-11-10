@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAudioPlayer, type AudioBook, type AudioChapter } from '../hooks/useAudioPlayer'
 import { NavBar } from '../components/NavBar'
@@ -78,6 +78,24 @@ export function ReaderPage() {
   // Saved scroll fraction to restore once the chapter has rendered
   const pendingScrollRef = useRef(0)
 
+  // Position the new chapter after its text has reached the DOM, before painting or
+  // saving progress. A pre-render smooth scroll can be cancelled by the chapter's
+  // changed height and browser scroll anchoring, leaving the next chapter at its end.
+  useLayoutEffect(() => {
+    const article = articleRef.current
+    if (loading || !activeChapter || !article) return
+    const saved = pendingScrollRef.current
+    pendingScrollRef.current = 0
+    const top = saved > 0 ? article.getBoundingClientRect().top + window.scrollY + saved * article.offsetHeight : 0
+    window.scrollTo({ top, left: 0, behavior: 'instant' })
+  }, [slug, activeChapter, chapters, loading])
+
+  const selectChapter = (id: string) => {
+    setFocus(null)
+    if (id === activeChapter) window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    else setActiveChapter(id)
+  }
+
   useEffect(() => {
     if (!slug) return
     loadBook(slug)
@@ -113,13 +131,6 @@ export function ReaderPage() {
       saveProgress(slug, idx, chapters.length, scroll, fraction)
       setChapterScroll(scroll)
     }
-    // Restore the saved position once, on the chapter it was saved for
-    const article = articleRef.current
-    if (pendingScrollRef.current > 0 && article) {
-      const top = article.getBoundingClientRect().top + window.scrollY
-      window.scrollTo(0, top + pendingScrollRef.current * article.offsetHeight)
-      pendingScrollRef.current = 0
-    }
     save()
     let timer: ReturnType<typeof setTimeout> | undefined
     const onScroll = () => {
@@ -146,11 +157,7 @@ export function ReaderPage() {
     followedRef.current = playerKey
     const target = chapters[player.chapterIdx]
     if (!target) return
-    setActiveChapter(prev => {
-      if (prev === target.id) return prev
-      window.scrollTo(0, 0)
-      return target.id
-    })
+    setActiveChapter(target.id)
   }, [player.book?.slug, player.chapterIdx, playerKey, slug, chapters])
 
   // Escape closes the text size panel and returns focus to its button (books#15)
@@ -514,7 +521,7 @@ export function ReaderPage() {
               {chapters.map((ch, i) => (
                 <button
                   key={ch.id}
-                  onClick={() => { setActiveChapter(ch.id); setSidebarOpen(false); window.scrollTo(0, 0) }}
+                  onClick={() => { selectChapter(ch.id); setSidebarOpen(false) }}
                   aria-current={activeChapter === ch.id ? 'true' : undefined}
                   className={`w-full text-left px-3 py-2.5 rounded text-sm transition flex items-center gap-2 ${
                     activeChapter === ch.id ? 'bg-surface-hover text-text' : 'text-text-muted'
@@ -546,7 +553,7 @@ export function ReaderPage() {
         </div>
       )}
 
-      <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 md:grid md:grid-cols-[220px_1fr] md:gap-8">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 md:grid md:grid-cols-[220px_minmax(0,1fr)] md:gap-8">
         {/* Desktop sidebar */}
         <aside aria-labelledby="chapters-heading" className="hidden md:block">
           <h2 id="chapters-heading" className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Chapters</h2>
@@ -554,7 +561,7 @@ export function ReaderPage() {
             {chapters.map((ch, i) => (
               <button
                 key={ch.id}
-                onClick={() => { setActiveChapter(ch.id); window.scrollTo(0, 0) }}
+                onClick={() => selectChapter(ch.id)}
                 aria-current={activeChapter === ch.id ? 'true' : undefined}
                 className={`w-full text-left px-3 py-2 rounded text-sm transition flex items-center gap-2 ${
                   activeChapter === ch.id ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text hover:bg-surface'
@@ -570,7 +577,7 @@ export function ReaderPage() {
         </aside>
 
         {/* Content */}
-        <main className={`bg-page text-text rounded-xl p-4 md:p-8 transition-colors`}>
+        <main className="min-w-0 [overflow-wrap:anywhere] bg-page text-text rounded-xl p-4 md:p-8 transition-colors">
           {currentChapter ? (
             <article ref={articleRef}>
               <h2 className="font-display mb-1" style={{ fontSize: `${Math.round(fontSize * 1.35)}px` }}>{currentChapter.title}</h2>
@@ -590,7 +597,7 @@ export function ReaderPage() {
               <div className="flex justify-between mt-8 md:mt-12 pt-4 md:pt-6 border-t border-border">
                 {visibleChapterIdx > 0 ? (
                   <button
-                    onClick={() => { setActiveChapter(chapters[visibleChapterIdx - 1].id); window.scrollTo(0, 0) }}
+                    onClick={() => selectChapter(chapters[visibleChapterIdx - 1].id)}
                     className="text-text-muted hover:text-text transition text-sm max-w-[45%] truncate"
                   >
                     &larr; {chapters[visibleChapterIdx - 1].title}
@@ -598,7 +605,7 @@ export function ReaderPage() {
                 ) : <span />}
                 {visibleChapterIdx < chapters.length - 1 ? (
                   <button
-                    onClick={() => { setActiveChapter(chapters[visibleChapterIdx + 1].id); window.scrollTo(0, 0) }}
+                    onClick={() => selectChapter(chapters[visibleChapterIdx + 1].id)}
                     className="text-text-muted hover:text-text transition text-sm max-w-[45%] truncate text-right"
                   >
                     {chapters[visibleChapterIdx + 1].title} &rarr;

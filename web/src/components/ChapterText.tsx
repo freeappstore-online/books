@@ -204,7 +204,8 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
       <div
         ref={containerRef}
         data-chapter-text=""
-        className={className}
+        // Break long compounds and source-text rules without altering text offsets or verse newlines.
+        className={`[overflow-wrap:anywhere] ${className ?? ''}`}
         style={style}
         title={title}
         onClick={e => { setFollowing(true); onClick?.(e) }}

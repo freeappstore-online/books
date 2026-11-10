@@ -10,6 +10,54 @@ async function goToMyBooks(page: Page) {
 
 const heading = (page: Page) => page.locator('article h2')
 
+for (const width of [390, 1280]) {
+  test.describe(`chapter navigation at ${width}px`, () => {
+    test.use({ viewport: { width, height: 844 } })
+    test.beforeEach(async ({ context, baseURL, page }) => {
+      await stubHuggingFace(context, baseURL!)
+      await page.goto(`/read/${SLUG}`)
+      await expect(heading(page)).toContainText(alice.chapters[0].title)
+    })
+
+    const expectChapterTop = async (page: Page, chapter: number) => {
+      await expect(heading(page)).toContainText(alice.chapters[chapter].title)
+      // Check the rendered chapter across frames, not just a transient scroll reset
+      // on the previous chapter before React commits the replacement.
+      const positions = await page.evaluate(async () => {
+        const positions = []
+        for (let i = 0; i < 4; i++) {
+          await new Promise(requestAnimationFrame)
+          positions.push(window.scrollY)
+        }
+        return positions
+      })
+      expect(positions.every(y => y <= 1)).toBe(true)
+      await expect.poll(() => page.evaluate(slug => JSON.parse(localStorage.getItem('bp-reading-progress')!)[slug], SLUG))
+        .toMatchObject({ chapterIdx: chapter, scroll: 0 })
+    }
+
+    test('Next and Previous at the bottom open the new chapter at the top', async ({ page }) => {
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }))
+      expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(500)
+      await page.locator('article').getByRole('button', { name: `${alice.chapters[1].title} →`, exact: true }).click()
+      await expectChapterTop(page, 1)
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }))
+      await page.locator('article').getByRole('button', { name: `← ${alice.chapters[0].title}`, exact: true }).click()
+      await expectChapterTop(page, 0)
+    })
+
+    test('the chapter list opens at the top after reading another chapter to its end', async ({ page }) => {
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }))
+      await openChapter(page, 4)
+      await expectChapterTop(page, 4)
+      // Choosing the already-open chapter also returns to its beginning.
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }))
+      await openChapter(page, 4)
+      await expectChapterTop(page, 4)
+    })
+  })
+}
+
 test.describe('the reader opens where the reader left off (books#28)', () => {
   test.beforeEach(async ({ context, baseURL, page }) => {
     await stubHuggingFace(context, baseURL!)
