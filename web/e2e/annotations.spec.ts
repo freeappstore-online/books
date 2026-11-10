@@ -94,12 +94,6 @@ test('the highlight toolbar stays with the selection as the page scrolls, and hi
   await page.goto(`/read/${SLUG}`)
   await page.waitForSelector('article h2')
   await selectText(page, 5000, 5020)
-  // A person selects what they can see: on a phone-sized viewport offset 5000 may start below the fold,
-  // where the toolbar is deliberately hidden
-  await page.evaluate(() => {
-    const r = getSelection()!.getRangeAt(0).getBoundingClientRect()
-    window.scrollBy({ top: r.top - window.innerHeight / 2, behavior: 'instant' })
-  })
   const toolbar = page.getByRole('toolbar', { name: 'Highlight' })
   await expect(toolbar).toBeVisible()
   const gap = async () => {

@@ -320,7 +320,10 @@ export const selectText = (page: Page, start: number, end: number) => page.evalu
   const r = document.createRange()
   r.setStart(...at(a))
   r.setEnd(...at(b))
-  ;(r.startContainer.parentElement as HTMLElement).scrollIntoView({ block: 'center', behavior: 'instant' })
+  // Centre the selected words themselves (a long paragraph centred can leave them off a phone screen),
+  // instantly: the app's CSS scrolls smoothly
+  const box = r.getBoundingClientRect()
+  window.scrollBy({ top: box.top + box.height / 2 - window.innerHeight / 2, behavior: 'instant' })
   getSelection()!.removeAllRanges()
   getSelection()!.addRange(r)
 }, [start, end] as const)
