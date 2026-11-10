@@ -113,6 +113,15 @@ band over coloured geometric shapes, with a "Project Gutenberg" label. Add those
 `covers.py` with the `GENERATED` reason, then run the script again for them. That deletes their `.webp`
 and drops them from `covers.ts`.
 
+For a book with no usable Gutenberg cover, look for a free one on Wikimedia Commons. It is usually the
+lead image of the book's Wikipedia article: the first-edition cover, its jacket or its title page. Use
+it only if the file is on Commons and marked *Public domain*. Leave it out if it is stored only on
+en.wikipedia (fair use), if it has a CC licence (it would need credit), or if it is a portrait, a
+painting or a film still rather than the book itself. An illustration from the first edition is fine,
+as with Pinocchio. Add the book to `SOURCES` in `covers.py` as
+`(file name, crop)` (crop is `None`, or fractions to cut a two-page spread down to its title page) and
+remove it from `SKIP`. `SOURCES` takes precedence over Gutenberg.
+
 ### 7. Typecheck and build
 
 ```bash
