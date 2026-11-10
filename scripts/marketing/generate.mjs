@@ -1,7 +1,7 @@
 // Generate the FreeWebStore catalogue from the same data as the reader.
 // Usage: node scripts/marketing/generate.mjs /tmp/books-marketing
-// Upload catalog.html with update_section and books.js with set_site_script,
-// then review the draft and dry-run push_update before publishing.
+// Patch the existing FreeWebStore section with catalog.json's fragments and
+// upload books.js with set_site_script. Keep website styling in FreeWebStore.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -50,19 +50,20 @@ const schema = {
   ],
 }
 const structured = `<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>`
-const section = readFileSync(resolve(here, 'catalog.html'), 'utf8')
-  .replace('{{BOOK_COUNT}}', books.length).replace('{{FILTERS}}', filters)
-  .replace('{{BOOK_CARDS}}', cards).replace('{{STRUCTURED_DATA}}', structured)
-if (section.length > 51200) throw new Error(`Catalogue section exceeds FreeWebStore's limit: ${section.length} characters`)
+const fragments = { bookCount: books.length, cardsHtml: cards, filtersHtml: filters, structuredDataHtml: structured }
+const fragmentSize = cards.length + filters.length + structured.length
+// Leave room for the website's own heading, controls and CSS within FWS's
+// 51200-character section limit. Its design belongs to the website session.
+if (fragmentSize > 45000) throw new Error(`Catalogue fragments need another section: ${fragmentSize} characters`)
 const rows = CATALOG.map(b => [b.id, b.title, b.author, b.year, genres.indexOf(b.genre), b.chapters, b.readTime,
   Number(COVERS.has(b.id))])
 const script = readFileSync(resolve(here, 'books.js.template'), 'utf8').replace('{{BOOKS}}', JSON.stringify(rows))
 mkdirSync(out, { recursive: true })
-writeFileSync(resolve(out, 'catalog.html'), section)
+writeFileSync(resolve(out, 'catalog.json'), JSON.stringify(fragments, null, 2))
 writeFileSync(resolve(out, 'books.js'), script)
 writeFileSync(resolve(out, 'meta.json'), JSON.stringify({
   title: 'Books — Free Classic Books to Read Online & Offline',
   description: `Read ${books.length} classic books free online. Browse fiction, philosophy, plays and poetry. Save books offline and listen to selected narrated titles. No account needed.`,
   noindex: false,
 }, null, 2))
-console.log(`Generated ${books.length} books; catalogue section ${section.length}/51200 characters`)
+console.log(`Generated ${books.length} books; catalogue fragments ${fragmentSize}/45000 characters`)

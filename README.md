@@ -53,7 +53,7 @@ The website at [books.freewebstore.online](https://books.freewebstore.online/) u
 node scripts/marketing/generate.mjs /tmp/books-marketing
 ```
 
-Through the FreeWebStore MCP session for Books, upload `catalog.html` with `update_section` (section `catalog`), `books.js` with `set_site_script`, and the fields in `meta.json` with `set_meta`. Update the hero's book count too. Preserve the section wrapper classes. Review desktop, mobile and JavaScript-disabled previews, dry-run `push_update`, then publish. The catalogue must contain its reader links in the HTML before JavaScript runs; the script enhances the cards and adds filtering. `scripts/marketing/help.html` is the website's offline and playback help section.
+Through the FreeWebStore MCP session for Books, read the current `catalog` section and patch its `#bookGrid` contents, filters, count and JSON-LD with the fragments in `catalog.json`. Upload `books.js` with `set_site_script`, and apply `meta.json` with `set_meta`. Update the hero's book count too. Keep website styling, wrapper classes and help content in FreeWebStore. Review desktop, mobile and JavaScript-disabled previews, dry-run `push_update`, then publish. The catalogue must contain its reader links in the HTML before JavaScript runs; the script enhances the cards and adds filtering.
 
 ## License
 
