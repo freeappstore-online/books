@@ -83,6 +83,8 @@ createServer((req, res) => {
   }
   if (path === '/__slow.wav') return slowWav(req.headers.range, res)
   let rel = path.slice(1)
+  // A legacy reader-scoped registration, independent of the SDK's root registration.
+  if (rel === 'legacy-sw.js') rel = 'sw.js'
   if (!rel || !existsSync(join(DIST, rel)) || statSync(join(DIST, rel)).isDirectory()) rel = 'index.html'
   const body = file(rel)
   const etag = `"${md5(body)}"`

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { pwa } from '../fas-capabilities/pwa'
 import { useOfflineBooks } from '../hooks/offlineBooks'
-import { newerVersionWaiting } from '../hooks/appUpdate'
+import { newerVersionWaiting, reloadWithAppUpdate } from '../hooks/appUpdate'
 
 /**
  * A slug this build doesn't know may be a book added in a newer version that a
@@ -25,14 +25,12 @@ export function BookNotFound() {
     pwa.ready
       .then(() => sw.getRegistration())
       .then(reg => (reg ? newerVersionWaiting(reg) : false))
-      .then(waiting => {
+      .then(async waiting => {
         if (cancelled) return
-        if (waiting) {
-          sw.addEventListener('controllerchange', () => window.location.reload(), { once: true })
-          if (pwa.activate()) return
-        }
-        setChecking(false)
+        if (waiting && await reloadWithAppUpdate(sw, () => { if (!cancelled) window.location.reload() })) return
+        if (!cancelled) setChecking(false)
       })
+      .catch(() => { if (!cancelled) setChecking(false) })
     return () => { cancelled = true }
   }, [sw, saving])
 

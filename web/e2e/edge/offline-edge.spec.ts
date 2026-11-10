@@ -355,3 +355,82 @@ test('a book this build lacks: the waiting new build is loaded before saying not
   await expect(page.getByText('Book not found'), 'not in the new build either').toBeVisible()
   expect(await page.evaluate(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting)).toBe(false)
 })
+
+test('Reload activates the reader-scoped waiting worker when the SDK root has no update', async ({ baseURL, page }) => {
+  await swReady(page)
+  await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.register('/legacy-sw.js', { scope: '/read/' })
+    if (reg.active) return
+    await new Promise<void>(resolve => {
+      const worker = reg.installing ?? reg.waiting!
+      worker.addEventListener('statechange', () => { if (worker.state === 'activated') resolve() })
+    })
+  })
+  await openReader(page)
+  await control(baseURL!, 'build=b')
+  await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update())
+  await expect(page.getByText('New version available')).toBeVisible({ timeout: 15_000 })
+  expect(await page.evaluate(async () => ({
+    readerWaiting: !!(await navigator.serviceWorker.getRegistration())?.waiting,
+    sdkRootWaiting: !!(await navigator.serviceWorker.getRegistration('/'))?.waiting,
+  }))).toEqual({ readerWaiting: true, sdkRootWaiting: false })
+  await page.getByRole('button', { name: 'Reload', exact: true }).click()
+  await page.waitForFunction(() => document.documentElement.innerHTML.includes('build-b'), null, { timeout: 15_000 })
+  await expect(page.getByText('New version available')).toHaveCount(0)
+  expect(await page.evaluate(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting)).toBe(false)
+})
+
+test('a waiting update survives hard refresh, and Reload then finishes it without another toast', async ({ baseURL, context, page }) => {
+  await swReady(page)
+  // Another old tab keeps the worker waiting when a hard reload bypasses its controller.
+  const keepOld = await context.newPage()
+  await keepOld.goto('/')
+  await keepOld.waitForFunction(() => !!navigator.serviceWorker.controller)
+  await control(baseURL!, 'build=b')
+  await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update())
+  await expect(page.getByText('New version available')).toBeVisible({ timeout: 15_000 })
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Page.reload', { ignoreCache: true })
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Reload', exact: true }).click()
+  await expect.poll(() => page.evaluate(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting)).toBe(false)
+  await expect(page.getByText('New version available')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByText('New version available')).toHaveCount(0)
+  expect(await page.content()).toContain('build-b')
+})
+
+test('first installation is not an update; another tab activating one leaves a working Reload', async ({ baseURL, context, page }) => {
+  await swReady(page)
+  await expect(page.getByText('New version available')).toHaveCount(0)
+  await control(baseURL!, 'build=b')
+  await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update())
+  await expect(page.getByText('New version available')).toBeVisible({ timeout: 15_000 })
+  const other = await context.newPage()
+  await other.goto('/')
+  await expect(other.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+  await other.getByRole('button', { name: 'Reload', exact: true }).click()
+  await other.waitForFunction(() => document.documentElement.innerHTML.includes('build-b'))
+  // This page remains on the old document, without interrupting work in it.
+  expect(await page.content()).not.toContain('build-b')
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Reload', exact: true }).click()
+  await page.waitForFunction(() => document.documentElement.innerHTML.includes('build-b'))
+  await expect(page.getByText('New version available')).toHaveCount(0)
+})
+
+test('Reload waits until an offline save finishes', async ({ baseURL, context, page }) => {
+  await stubHuggingFace(context, baseURL!, { inline: true, delayMs: 200 })
+  await swReady(page)
+  await openReader(page)
+  await control(baseURL!, 'build=b')
+  await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update())
+  const reload = page.getByRole('button', { name: 'Reload', exact: true })
+  await expect(reload).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: /Save offline/ }).click()
+  await expect(reload).toBeDisabled()
+  await expect(page.getByText('✓ Saved offline')).toBeVisible({ timeout: 30_000 })
+  await expect(reload).toBeEnabled()
+  await reload.click()
+  await page.waitForFunction(() => document.documentElement.innerHTML.includes('build-b'))
+})
