@@ -9,7 +9,7 @@ into CACHE_DIR (once, sequentially, a pause between requests). Writes
 web/public/covers/<slug>.webp (WIDTH px wide at most) and web/src/data/covers.ts, the list of
 books that have a cover. Needs Pillow.
 """
-import io, os, sys, time, urllib.error, urllib.parse, urllib.request
+import hashlib, io, os, sys, time, urllib.error, urllib.parse, urllib.request
 
 from PIL import Image
 
@@ -30,6 +30,17 @@ SKIP = {slug: b["cover"]["none"] for slug, b in CATALOG.items() if "none" in b.g
 SOURCES = {slug: (b["cover"]["commons"], tuple(b["cover"]["crop"]) if "crop" in b["cover"] else None)
            for slug, b in CATALOG.items() if "commons" in b.get("cover", {})}
 COMMONS = "https://commons.wikimedia.org/wiki/Special:FilePath/"
+
+
+def commons_url(name: str, page: int | None = None) -> str:
+    if page is None:
+        return COMMONS + urllib.parse.quote(name) + f"?width={WIDTH * 2}"
+    # Special:FilePath ignores page= and returns page 1, often a blank flyleaf.
+    # Commons' supported 500px document thumbnail is large enough for our 384px output.
+    name = name.replace(' ', '_')
+    digest = hashlib.md5(name.encode('utf-8')).hexdigest()
+    quoted = urllib.parse.quote(name, safe='')
+    return f'https://upload.wikimedia.org/wikipedia/commons/thumb/{digest[0]}/{digest[:2]}/{quoted}/page{page}-500px-{quoted}.jpg'
 
 
 def get(url: str) -> bytes | None:
@@ -65,10 +76,11 @@ def download(cache: str, gid: int) -> bytes | None:
 
 def download_commons(cache: str, slug: str) -> bytes:
     name, _ = SOURCES[slug]
-    path = os.path.join(cache, f"commons-{slug}.jpg")
+    page = CATALOG[slug]['cover'].get('page')
+    path = os.path.join(cache, f"commons-{slug}{f'-page{page}' if page else ''}.jpg")
     if not os.path.exists(path):
         # ?width= asks Commons for a raster thumbnail, which also covers PDF/DjVu pages and SVGs.
-        data = get(COMMONS + urllib.parse.quote(name) + f"?width={WIDTH * 2}")
+        data = get(commons_url(name, page))
         with open(path, "wb") as f:
             f.write(data)
     return open(path, "rb").read()

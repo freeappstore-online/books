@@ -10,6 +10,7 @@ from unittest.mock import mock_open, patch
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fetch  # noqa: E402
 import books  # noqa: E402
+import covers  # noqa: E402
 import qa  # noqa: E402
 import standardebooks  # noqa: E402
 from covers import COVERS_TS, OUT_DIR as COVERS_DIR  # noqa: E402
@@ -186,6 +187,20 @@ class BookFiles(unittest.TestCase):
     def test_a_good_book_passes(self):
         books._validate("x", self.GOOD)
         books._validate("x", {**self.GOOD, "source": {"none": "kept"}, "cover": {"commons": "F.jpg", "crop": [0, 0, 1, 1]}})
+
+    def test_document_cover_page_is_validated(self):
+        books._validate("x", {**self.GOOD, "cover": {"commons": "Book.pdf", "page": 5}})
+        for cover in [{"commons": "Book.pdf", "page": 0}, {"commons": "Book.pdf", "page": True},
+                      {"commons": "Book.jpg", "page": 5}, {"none": "missing", "page": 5}]:
+            with self.assertRaisesRegex(SystemExit, 'positive page number'):
+                books._validate("x", {**self.GOOD, "cover": cover})
+
+    def test_document_cover_requests_selected_page_instead_of_blank_first_page(self):
+        url = covers.commons_url("Jacob's Room (Hogarth Press, 1922).pdf", 5)
+        self.assertIn('/5/59/', url)
+        self.assertIn('/page5-500px-', url)
+        self.assertNotIn('?page=', url)
+        self.assertTrue(covers.commons_url('Book.jpg').endswith('Book.jpg?width=768'))
 
     def test_mistakes_are_named(self):
         for change, message in [({"year": "1900"}, "year must be a int"),

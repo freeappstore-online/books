@@ -16,4 +16,5 @@ accent = "#818CF8"
 gutenberg = 5670
 
 [cover]
-none = "Gutenberg's generated placeholder (title over abstract shapes, 'Project Gutenberg' label)"
+commons = "Jacob's Room (Hogarth Press, 1922).pdf"
+page = 5

@@ -129,6 +129,8 @@ exactly one of:
 
 - `commons = "File_name.jpg"`: a public-domain file on Wikimedia Commons, the book's own cover or
   title page (rules in [docs/adding-books.md](../docs/adding-books.md#5-add-the-cover)). Add
+  `page = 5` for a PDF or DjVu whose title page is inside the scan (count from 1, including blank
+  flyleaves). Inspect the selected page; the default first page may be blank. Add
   `crop = [left, top, right, bottom]`, as fractions of the image, to cut out part of it, for example
   `[0.5, 0, 1, 1]` for the right-hand page of a two-page scan.
 - `none = "why"`: the book has no cover image (its Gutenberg cover is a generated placeholder, say),

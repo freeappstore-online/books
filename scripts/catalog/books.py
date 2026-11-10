@@ -59,8 +59,11 @@ def _validate(slug: str, book: dict):
         if unknown := set(opts) - SPLIT_OPTIONS - {"gutenberg", "volumes", "none", "standardebooks", "revision", "expected_chapters", "ending"}:
             bad(f"unknown [source] option(s) {', '.join(sorted(unknown))}")
     cover = book.get("cover", {})
-    if cover and sum(k in cover for k in ("commons", "none")) != 1 or set(cover) - {"commons", "crop", "none"}:
-        bad("[cover] holds either commons (and an optional crop) or none")
+    if cover and sum(k in cover for k in ("commons", "none")) != 1 or set(cover) - {"commons", "crop", "page", "none"}:
+        bad("[cover] holds either commons (and optional crop/page) or none")
+    if "page" in cover and ("commons" not in cover or not cover["commons"].lower().endswith((".pdf", ".djvu"))
+                            or type(cover["page"]) is not int or cover["page"] < 1):
+        bad("[cover] page must be a positive page number of a Commons PDF or DjVu file")
 
 
 def load() -> dict[str, dict]:
