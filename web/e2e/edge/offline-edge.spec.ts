@@ -342,3 +342,16 @@ test('a new build: toast while playing, playback carries on, Reload loads it', a
   await page.waitForTimeout(1000)
   await expect(page.getByText('New version available')).toHaveCount(0)
 })
+
+test('a book this build lacks: the waiting new build is loaded before saying not found (books#32)', async ({ baseURL, page }) => {
+  await swReady(page)
+  await page.goto('/read/no-such-book')
+  await expect(page.getByText('Book not found'), 'no new build: not found straight away').toBeVisible()
+
+  // A deploy since this build was cached, which might have the book
+  await control(baseURL!, 'build=b')
+  await page.goto('/read/a-book-added-later')
+  await page.waitForFunction(() => document.documentElement.innerHTML.includes('build-b'), null, { timeout: 15_000 })
+  await expect(page.getByText('Book not found'), 'not in the new build either').toBeVisible()
+  expect(await page.evaluate(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting)).toBe(false)
+})

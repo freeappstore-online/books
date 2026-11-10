@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { NavBar } from '../components/NavBar'
 import { PlayButton } from '../components/PlayButton'
@@ -23,6 +23,7 @@ import { saveProgress, getProgress, setFinished, useFinished } from '../hooks/us
 import { TimeLeft } from '../components/TimeLeft'
 import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
 import { CATALOG } from '../data/catalog'
+import { BookNotFound } from '../components/BookNotFound'
 import { isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
 
 /** Chapter offset of the first text on screen, for a bookmark of the reading position. */
@@ -389,16 +390,7 @@ export function ReaderPage() {
     return <div className="min-h-dvh bg-page text-text flex items-center justify-center">Loading...</div>
   }
 
-  if (!bookTitle) {
-    return (
-      <div className="min-h-dvh bg-page text-text flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <p className="text-xl text-text-muted">Book not found</p>
-          <Link to="/" className="text-accent hover:underline">Browse books</Link>
-        </div>
-      </div>
-    )
-  }
+  if (!bookTitle) return <BookNotFound />
 
   return (
     <div className="min-h-dvh bg-page text-text">
