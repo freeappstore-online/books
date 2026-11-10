@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CatalogBook } from '../data/catalog'
+import type { CatalogBook } from '../data/book'
 import { COVERS } from '../data/covers'
 
 interface Props {

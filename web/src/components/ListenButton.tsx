@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { primeNarration } from '../hooks/narration'
 import { fetchChapters } from '../hooks/offlineBooks'
-import { readPath, type CatalogBook } from '../data/catalog'
+import { readPath, type CatalogBook } from '../data/book'
 
 /** Resume listening to a book where it stopped, and open it in the reader (books#13). */
 export function ListenButton({ book, className }: { book: CatalogBook; className?: string }) {

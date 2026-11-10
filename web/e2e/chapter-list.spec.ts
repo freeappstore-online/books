@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { test, expect, stubHuggingFace } from './fixtures'
 
-const book = JSON.parse(readFileSync(new URL('../public/catalog/a-little-princess.json', import.meta.url), 'utf8'))
+const book = JSON.parse(readFileSync(new URL('../../edition/texts/a-little-princess.json', import.meta.url), 'utf8'))
 
 test.beforeEach(async ({ context, baseURL }) => {
   await stubHuggingFace(context, baseURL!)

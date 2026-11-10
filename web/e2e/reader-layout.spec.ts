@@ -21,7 +21,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
             localStorage.setItem('bp-font-size', '32')
             localStorage.setItem('bp-ui-scale', '150')
           })
-          const book = JSON.parse(readFileSync(new URL(`../public/catalog/${slug}.json`, import.meta.url), 'utf8'))
+          const book = JSON.parse(readFileSync(new URL(`../../edition/texts/${slug}.json`, import.meta.url), 'utf8'))
           await page.goto(`/read/${slug}/?ch=${chapter}`)
           const text = page.locator('[data-chapter-text]')
           await expect(text).toBeVisible()

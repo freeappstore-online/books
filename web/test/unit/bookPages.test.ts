@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { CATALOG } from '../../src/data/catalog'
+import { EDITION } from '../../src/data/edition'
 import { bookPage, openingParagraphs, sitemap } from '../../src/seo/bookPages'
 
 // The static page per book for search engines (books#47)
@@ -10,7 +11,7 @@ const content = { chapterTitles: ['Down the Rabbit-Hole', 'The Pool of Tears'], 
 const meta = (html: string, key: string) => html.match(new RegExp(`<meta (?:name|property)="${key}" content="([^"]*)"`))?.[1]
 
 describe('book page', () => {
-  const html = bookPage(shell, book, content)
+  const html = bookPage(shell, book, content, EDITION)
 
   it('has its own title, description, canonical and social tags', () => {
     expect(html.match(/<title>[^<]*<\/title>/g)).toEqual(["<title>Alice's Adventures in Wonderland by Lewis Carroll: Read &amp; Listen Free Online | Books</title>"])
@@ -36,14 +37,14 @@ describe('book page', () => {
   })
 
   it('a reading-only book has no audiobook line or cover image when it has none', () => {
-    const plain = bookPage(shell, book, { ...content, narrated: 0, hasCover: false })
+    const plain = bookPage(shell, book, { ...content, narrated: 0, hasCover: false }, EDITION)
     expect(plain).not.toContain('Audiobook')
     expect(plain).not.toContain('og:image')
     expect(meta(plain, 'description')).not.toContain('listen')
   })
 
   it('fails the build when index.html loses a tag it fills in', () => {
-    expect(() => bookPage(shell.replace(/<meta property="og:url"[^>]*>/, ''), book, content)).toThrow(/og:url/)
+    expect(() => bookPage(shell.replace(/<meta property="og:url"[^>]*>/, ''), book, content, EDITION)).toThrow(/og:url/)
   })
 })
 
@@ -54,7 +55,7 @@ it('the opening stops after about 1500 characters, at a paragraph end', () => {
 })
 
 it('the sitemap lists the home page and every book page', () => {
-  const xml = sitemap(['a', 'b'])
+  const xml = sitemap(['a', 'b'], EDITION.site)
   expect(xml.match(/<loc>[^<]*<\/loc>/g)).toEqual([
     '<loc>https://books.freeappstore.online/</loc>',
     '<loc>https://books.freeappstore.online/read/a/</loc>',

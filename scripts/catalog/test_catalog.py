@@ -13,7 +13,7 @@ import books  # noqa: E402
 import covers  # noqa: E402
 import qa  # noqa: E402
 import standardebooks  # noqa: E402
-from covers import COVERS_TS, OUT_DIR as COVERS_DIR  # noqa: E402
+from covers import COVERS_JSON, OUT_DIR as COVERS_DIR  # noqa: E402
 from fetch import BOOKS, differences, is_verse, number, read_time, split_book, titlecase  # noqa: E402
 
 
@@ -290,7 +290,7 @@ class Consistency(unittest.TestCase):
     def test_books_json_is_generated_from_the_book_files(self):
         with open(books.APP_DATA, encoding="utf-8") as f:
             self.assertEqual(f.read(), books.render_app_data(),
-                             "web/src/data/books.json is out of date: run python3 scripts/catalog/books.py")
+                             "edition/books.json is out of date: run python3 scripts/catalog/books.py")
 
     def test_every_book_has_its_text_and_no_text_is_orphaned(self):
         files = {f[:-5] for f in os.listdir(fetch.OUT_DIR) if f.endswith(".json")}
@@ -314,10 +314,10 @@ class Consistency(unittest.TestCase):
                 keys.update(str(g) for g, _ in fetch.volumes(slug))
         self.assertEqual(keys - set(lock), set())
 
-    def test_covers_ts_matches_the_cover_files(self):
+    def test_covers_json_matches_the_cover_files(self):
         files = {f[:-5] for f in os.listdir(COVERS_DIR) if f.endswith(".webp")}
-        with open(COVERS_TS, encoding="utf-8") as f:
-            listed = set(re.findall(r"'([^']+)'", f.read()))
+        with open(COVERS_JSON, encoding="utf-8") as f:
+            listed = set(json.load(f))
         self.assertEqual(listed, files)
         self.assertEqual(files - set(books.CATALOG), set())
 

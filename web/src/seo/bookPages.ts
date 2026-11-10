@@ -4,9 +4,11 @@
  * page is the built index.html with the book's metadata and content in #root,
  * which the app replaces when it starts.
  */
-import { formatYear, readPath, type CatalogBook } from '../data/catalog'
+import { formatYear, readPath, type CatalogBook } from '../data/book'
+import type { EditionConfig } from '../data/edition'
 
-export const SITE = 'https://books.freeappstore.online'
+/** What a page takes from the edition (edition/config.json) */
+export type PageEdition = Pick<EditionConfig, 'site' | 'name' | 'language'>
 
 export interface BookPageContent {
   chapterTitles: string[]
@@ -52,12 +54,12 @@ function audioNote(narrated: number, chapters: number): string {
     : `Audiobook: ${narrated} of ${chapters} chapters are narrated, with the text following along as you listen.`
 }
 
-export function bookPage(shell: string, book: CatalogBook, content: BookPageContent): string {
-  const url = SITE + readPath(book.id)
+export function bookPage(shell: string, book: CatalogBook, content: BookPageContent, edition: PageEdition): string {
+  const url = edition.site + readPath(book.id)
   const listen = content.narrated > 0
-  const title = `${book.title} by ${book.author}: ${listen ? 'Read & Listen' : 'Read'} Free Online | Books`
+  const title = `${book.title} by ${book.author}: ${listen ? 'Read & Listen' : 'Read'} Free Online | ${edition.name}`
   const description = `Read ${book.title} by ${book.author} free online${listen ? ', or listen to the audiobook' : ''}. ${book.description}`
-  const image = content.hasCover ? `${SITE}/covers/${book.id}.webp` : undefined
+  const image = content.hasCover ? `${edition.site}/covers/${book.id}.webp` : undefined
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Book',
@@ -67,7 +69,7 @@ export function bookPage(shell: string, book: CatalogBook, content: BookPageCont
     genre: book.genre,
     keywords: book.tags.join(', '),
     description: book.description,
-    inLanguage: 'en',
+    inLanguage: edition.language,
     url,
     ...(image && { image }),
     isAccessibleForFree: true,
@@ -118,7 +120,7 @@ ${content.chapterTitles.map(t => `<li>${escapeHtml(t)}</li>`).join('\n')}
   return replaceOnce(html, /<div id="root"><\/div>/, `<div id="root">${main}</div>`)
 }
 
-export function sitemap(slugs: string[]): string {
-  const urls = ['/', ...slugs.map(readPath)].map(path => `  <url><loc>${SITE}${path}</loc></url>`)
+export function sitemap(slugs: string[], site: string): string {
+  const urls = ['/', ...slugs.map(readPath)].map(path => `  <url><loc>${site}${path}</loc></url>`)
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`
 }

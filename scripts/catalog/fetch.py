@@ -3,18 +3,18 @@
 usage: fetch.py CACHE_DIR [--check | --relock] [SLUG...]
 Downloads each book's plain text into CACHE_DIR (once, ~1 req/s), keeps only the text between
 the `*** START/END OF` markers, drops front and back matter, splits on the book's own headings
-and writes web/public/catalog/<slug>.json = {"chapters": [{"title", "content"}]}. Then rewrites
-web/src/data/books.json, the list the app shows, with each book's chapter count and reading time.
+and writes edition/texts/<slug>.json = {"chapters": [{"title", "content"}]}. Then rewrites
+edition/books.json, the list the app shows, with each book's chapter count and reading time.
 No caps: whole books.
 
-Each book's source and split options are its [source] in catalog/books/<slug>.toml (books.py);
+Each book's source and split options are its [source] in edition/books/<slug>.toml (books.py);
 what each option does is documented in catalog/README.md.
 
 Builds are reproducible (books#38): sources.lock.json pins the SHA-256 of every Gutenberg file a
 book is built from, so a file Gutenberg re-releases stops the build instead of silently changing a
 book (and misaligning its narration, which is keyed by chapter index). --relock accepts the new
 files after you have reviewed the result. --check rebuilds the books in memory and compares them
-with the committed web/public/catalog/<slug>.json, writing nothing; it exits 1 on any difference,
+with the committed edition/texts/<slug>.json, writing nothing; it exits 1 on any difference,
 so a hand edit of a catalogue file or a change to this script that re-splits a book is caught.
 
 Content is what the reader shows and TTS reads verbatim, so headings, licence text, tables of
@@ -24,14 +24,14 @@ Paragraphs are separated by a blank line; prose is unwrapped, verse keeps its li
 import hashlib, json, os, re, sys, time, urllib.request
 from concurrent.futures import ProcessPoolExecutor
 
-from books import CATALOG, ROOT, read_time, source, write_app_data  # noqa: F401 (read_time: qa, tests)
+from books import CATALOG, CONFIG, EDITION, ROOT, TEXT_DIR, read_time, source, write_app_data  # noqa: F401 (read_time: qa, tests)
 import standardebooks
 
-OUT_DIR = os.path.join(ROOT, "web/public/catalog")
-LOCK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sources.lock.json")
-USER_AGENT = "freeappstore-books/1.0 (+https://github.com/freeappstore-online/books)"
+OUT_DIR = TEXT_DIR
+LOCK_PATH = os.path.join(EDITION, "sources.lock.json")
+USER_AGENT = f"freeappstore-{CONFIG['id']}/1.0 (+https://github.com/freeappstore-online/{CONFIG['id']})"
 
-# slug -> (Gutenberg id, or a tuple of volumes (id, options), split options), from catalog/books/*.toml
+# slug -> (Gutenberg id, or a tuple of volumes (id, options), split options), from edition/books/*.toml
 BOOKS = {slug: src for slug, book in CATALOG.items() if (src := source(book))}
 # Not on Project Gutenberg: their committed files are kept as they are.
 UNSOURCED = {slug for slug, book in CATALOG.items() if source(book) is None}
@@ -607,7 +607,7 @@ def main():
     cache, *slugs = [a for a in args if a not in ("--check", "--relock")]
     unknown = [s for s in slugs if s not in BOOKS]
     if unknown:
-        raise SystemExit(f"no catalog/books/<slug>.toml with a reproducible source: {' '.join(unknown)}")
+        raise SystemExit(f"no edition/books/<slug>.toml with a reproducible source: {' '.join(unknown)}")
     LOCK.mode = "verify" if check else "relock" if relock else "record"
     os.makedirs(cache, exist_ok=True)
     slugs = slugs or list(BOOKS)

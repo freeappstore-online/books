@@ -3,8 +3,8 @@
 A catalogue book is a whole Project Gutenberg text split into chapters, with optional pre-generated
 Kokoro narration. Adding one takes two steps:
 
-1. **Text:** you describe the book in `catalog/books/<slug>.toml`, `scripts/catalog/fetch.py` writes
-   its text to `web/public/catalog/<slug>.json`, then you push to `main` and the app redeploys.
+1. **Text:** you describe the book in `edition/books/<slug>.toml`, `scripts/catalog/fetch.py` writes
+   its text to `edition/texts/<slug>.json`, then you push to `main` and the app redeploys.
 2. **Narration:** the *Generate audio* workflow uploads `<voice>/<slug>/<chapter>.m4a`, its
    `<chapter>.timings.json` and its title clip `<chapter>.title.m4a` to the
    [`serge-ivo/books-audio`](https://huggingface.co/datasets/serge-ivo/books-audio) dataset on Hugging Face
@@ -16,7 +16,7 @@ Do step 2 only after the text is final on `main`, because audio files are keyed 
 
 You need Python 3.11 or later (`fetch.py`, `books.py` and `qa.py` use only the standard library), pnpm,
 and `gh`. The book file's format, and every split option, is documented in
-[catalog/README.md](../catalog/README.md).
+[edition/README.md](../edition/README.md).
 
 ## Text
 
@@ -29,14 +29,14 @@ and `gh`. The book file's format, and every split option, is documented in
   after 1955, the book is still in copyright in Australia and other life+70 countries. Say so in the
   issue.
 - Check the book isn't already in the catalogue under another title or Gutenberg ID:
-  `grep -rn "gutenberg = .*<id>" catalog/books` and `grep -il "<title>" catalog/books/*`.
+  `grep -rn "gutenberg = .*<id>" edition/books` and `grep -il "<title>" edition/books/*`.
 - Mind the deploy size. `web/dist` must stay under the platform's 250 MB per-app limit
   (`MAX_TOTAL_BYTES` in `freeappstore-online/platform` `packages/backend/src/routes/deploy.ts`), and no
   single file may exceed 25 MB. A book's JSON is roughly the size of its Gutenberg `.txt` file.
 
 ### 2. Write the book file
 
-Create `catalog/books/<slug>.toml`. The slug becomes the book's id, its address (`/read/<slug>/`) and its
+Create `edition/books/<slug>.toml`. The slug becomes the book's id, its address (`/read/<slug>/`) and its
 narration folder, so choose it once: lowercase words joined by hyphens, usually the title without
 "the". Copy a similar book's file and change it:
 
@@ -77,11 +77,11 @@ python3 scripts/catalog/fetch.py ~/.cache/books-gutenberg north-and-south
 ```
 
 This downloads the text once into the cache (at about one request per second), records its SHA-256 in
-`scripts/catalog/sources.lock.json`, writes `web/public/catalog/north-and-south.json` and regenerates
-`web/src/data/books.json`, the list the app shows. A mistake in the book file (a missing or misspelt
+`edition/sources.lock.json`, writes `edition/texts/north-and-south.json` and regenerates
+`edition/books.json`, the list the app shows. A mistake in the book file (a missing or misspelt
 key) stops it with the file's name and what is wrong.
 
-Never edit a `web/public/catalog/*.json` file by hand: the next rebuild would undo it, and CI's rebuild
+Never edit a `edition/texts/*.json` file by hand: the next rebuild would undo it, and CI's rebuild
 check fails on it. Fix the text with split options in the book's `[source]` (or in `fetch.py` itself, see
 [the pipeline guide](catalogue-pipeline.md)).
 
@@ -115,13 +115,13 @@ cd scripts/catalog && python3 covers.py ~/.cache/books-covers north-and-south   
 ```
 
 `covers.py` downloads the Gutenberg cover (the full-size scan if there is one, otherwise the 200 px
-thumbnail), writes `web/public/covers/<slug>.webp` and regenerates `web/src/data/covers.ts`. A book
+thumbnail), writes `edition/covers/<slug>.webp` and regenerates `edition/covers.json`. A book
 with no cover shows its `[look]` gradient instead.
 
 Look at every new cover. Many Gutenberg books only have a *generated placeholder*: the title in a white
 band over coloured geometric shapes, with a "Project Gutenberg" label. Give those books a `[cover]`
 with `none = "Gutenberg's generated placeholder (title over abstract shapes, 'Project Gutenberg' label)"`,
-then run the script again for them. That deletes their `.webp` and drops them from `covers.ts`.
+then run the script again for them. That deletes their `.webp` and drops them from `covers.json`.
 
 For a book with no usable Gutenberg cover, look for a free one on Wikimedia Commons. It is usually the
 lead image of the book's Wikipedia article: the first-edition cover, its jacket or its title page. Use
@@ -148,8 +148,8 @@ python3 scripts/catalog/fetch.py ~/.cache/books-gutenberg --check
 
 ### 7. Commit and push
 
-Commit `catalog/books/<slug>.toml`, `sources.lock.json`, `web/src/data/books.json`, `covers.ts`,
-`web/public/catalog/<slug>.json` and `web/public/covers/<slug>.webp`, referencing the issue (`Refs #N`). A push to `main` deploys.
+Commit `edition/books/<slug>.toml`, `sources.lock.json`, `edition/books.json`, `covers.json`,
+`edition/texts/<slug>.json` and `edition/covers/<slug>.webp`, referencing the issue (`Refs #N`). A push to `main` deploys.
 Add books in batches rather than one commit per book.
 
 ## Narration
@@ -301,4 +301,4 @@ Increment the revision again whenever the text or chapter order changes. Books w
 keep their existing paths. Do not remove a revision to make old audio appear again.
 
 A book that is removed from the catalogue keeps its audio in the dataset, and `manifest.py` ignores it
-because it builds the manifest from `web/public/catalog`.
+because it builds the manifest from `edition/texts`.

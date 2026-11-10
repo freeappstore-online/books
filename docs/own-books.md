@@ -38,7 +38,7 @@ import screen.
 
 ### Conversion
 
-All formats convert to the app's existing book shape, the same as `web/public/catalog/*.json`:
+All formats convert to the app's existing book shape, the same as `edition/texts/*.json`:
 
 ```ts
 interface ImportedBook {

@@ -1,59 +1,23 @@
 /**
- * Narration pre-generated for the public catalogue (books#4), served from the
- * serge-ivo/books-audio dataset on Hugging Face. Built by
- * .github/workflows/generate-audio.yml.
+ * Narration pre-generated for the public catalogue (books#4), served from the edition's dataset
+ * on Hugging Face (audio.dataset in edition/config.json). Built by .github/workflows/generate-audio.yml.
  */
 import { useEffect, useState } from 'react'
 import { CATALOG } from '../data/catalog'
+import { EDITION } from '../data/edition'
+import { datasetBase, narratedCount, parseManifestFor, type ManifestExtras, type PreparedManifest } from './manifest'
 
-const BASE = 'https://huggingface.co/datasets/serge-ivo/books-audio/resolve/main'
+export type { BookExtras, ManifestExtras, PreparedManifest } from './manifest'
+
+const BASE = datasetBase(EDITION.audio.dataset)
 export const MANIFEST_URL = `${BASE}/manifest.json`
 
 /** The narrator voice the app plays (manifest key and folder in the dataset). */
-export const VOICE = 'af_heart'
+export const VOICE = EDITION.audio.voice
 
-/** voice id → book slug → seconds of audio per chapter (null: chapter not narrated) */
-export type PreparedManifest = Record<string, Record<string, (number | null)[]>>
-
-/** What else a book has published next to its narration (books#37) */
-export interface BookExtras {
-  textRevision?: string
-  /** Its narrated chapters have read-along timings */
-  timings?: boolean
-  /** Seconds of each chapter's spoken title clip (null: none) */
-  titles?: (number | null)[]
-}
-/** voice id → book slug → extras; a book missing here has none */
-export type ManifestExtras = Record<string, Record<string, BookExtras>>
-
-/**
- * manifest.json is `{voice: {slug: [seconds|null,...]}, extras: ManifestExtras}`.
- * Other top-level keys (added by later pipelines) are ignored. extras is null
- * for a manifest published before it existed: then nothing is known about them.
- */
+/** The manifest, keeping only narration that matches this edition's texts. */
 export function parseManifest(raw: unknown): { manifest: PreparedManifest; extras: ManifestExtras | null } {
-  const manifest: PreparedManifest = {}
-  let extras: ManifestExtras | null = null
-  const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
-  if (isObject(raw)) {
-    for (const [key, value] of Object.entries(raw)) {
-      if (key === 'extras') {
-        if (isObject(value)) extras = value as ManifestExtras
-      } else if (isObject(value) && Object.values(value).every(Array.isArray)) {
-        manifest[key] = { ...value } as Record<string, (number | null)[]>
-      }
-    }
-  }
-  // Restored or re-split texts must never play a previous edition's chapter audio,
-  // including a manifest saved for offline use before the text was replaced.
-  for (const [voice, books] of Object.entries(manifest)) {
-    for (const book of CATALOG) {
-      if (book.narrationRevision && extras?.[voice]?.[book.id]?.textRevision !== book.narrationRevision) {
-        delete books[book.id]
-      }
-    }
-  }
-  return { manifest, extras }
+  return parseManifestFor(raw, CATALOG)
 }
 
 let manifestPromise: Promise<PreparedManifest> | null = null
@@ -126,7 +90,7 @@ export function chapterSeconds(m: PreparedManifest, slug: string, chapterIdx: nu
 
 /** Number of chapters of a book narrated in this voice. */
 export function preparedCount(m: PreparedManifest, slug: string, voice = VOICE): number {
-  return m[voice]?.[slug]?.filter(d => d != null).length ?? 0
+  return narratedCount(m, slug, voice)
 }
 
 export function preparedUrl(slug: string, chapterIdx: number, voice = VOICE): string {

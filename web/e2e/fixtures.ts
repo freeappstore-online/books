@@ -10,7 +10,7 @@ export { expect }
 
 export const HF = 'https://huggingface.co/datasets/serge-ivo/books-audio/resolve/main/'
 export const SLUG = 'alice-in-wonderland'
-export const alice = JSON.parse(readFileSync(new URL('../public/catalog/alice-in-wonderland.json', import.meta.url), 'utf8')) as {
+export const alice = JSON.parse(readFileSync(new URL('../../edition/texts/alice-in-wonderland.json', import.meta.url), 'utf8')) as {
   chapters: { title: string; content: string }[]
 }
 export const chapterUrl = (idx: number) => `${HF}af_heart/${SLUG}/${idx}.m4a`
@@ -20,7 +20,7 @@ export const chapterUrl = (idx: number) => `${HF}af_heart/${SLUG}/${idx}.m4a`
  * and 18 narrated, 3–17 not.
  */
 export const PARTIAL = 'manhattan-transfer'
-export const partial = JSON.parse(readFileSync(new URL(`../public/catalog/${PARTIAL}.json`, import.meta.url), 'utf8')) as typeof alice
+export const partial = JSON.parse(readFileSync(new URL(`../../edition/texts/${PARTIAL}.json`, import.meta.url), 'utf8')) as typeof alice
 export const PARTIAL_DURATIONS: (number | null)[] = partial.chapters.map((_, i) => (i === 0 || i === partial.chapters.length - 1 ? 300 : i === 1 ? 3 : null))
 
 /** Silent 8 kHz 8-bit mono WAV of `seconds`; with `tone`, a quiet 500 Hz square wave instead. */

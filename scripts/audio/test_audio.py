@@ -12,7 +12,7 @@ from generate import encode, loudness, trim
 from manifest import audio_prefix, build, build_extras, check_slugs, duration, merge
 from segments import sentences, spoken_title, utf16
 
-CATALOG = os.path.join(os.path.dirname(__file__), "../../web/public/catalog")
+CATALOG = os.path.join(os.path.dirname(__file__), "../../edition/texts")
 ALICE = "alice-in-wonderland"
 
 

@@ -1,20 +1,82 @@
-import { readFileSync } from 'node:fs'
+import { cpSync, createReadStream, existsSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { pwaOptions } from '@freeappstore/sdk/pwa-config'
-import { CATALOG } from './src/data/catalog'
-import { COVERS } from './src/data/covers'
-import { MANIFEST_URL, parseManifest, preparedCount } from './src/hooks/preparedAudio'
+import type { CatalogBook } from './src/data/book'
+import type { EditionConfig } from './src/data/edition'
+import { datasetBase, narratedCount, parseManifestFor } from './src/hooks/manifest'
 import { bookPage, openingParagraphs, sitemap } from './src/seo/bookPages'
 
-// Book covers (public/covers/*.webp) stay out of the precache; they are cached as they are shown.
+// This app's edition: its config, books, texts and covers (docs/editions.md). BOOKS_EDITION points
+// the build at another one. The config reads it from disk: app code reaches it as @edition/*.
+const editionDir = resolve(process.env.BOOKS_EDITION || fileURLToPath(new URL('../edition', import.meta.url)))
+const readJson = <T>(file: string): T => JSON.parse(readFileSync(join(editionDir, file), 'utf8')) as T
+const EDITION = readJson<EditionConfig>('config.json')
+const CATALOG = readJson<CatalogBook[]>('books.json')
+const COVERS = new Set(readJson<string[]>('covers.json'))
+
+// Book covers (/covers/*.webp) stay out of the precache; they are cached as they are shown.
 // maxEntries is above the catalogue size so a cover fetched for an offline book is never evicted.
 const coverCache = {
   urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith('/covers/'),
   handler: 'CacheFirst' as const,
   options: { cacheName: 'book-covers-v1', expiration: { maxEntries: 300 } },
+}
+
+const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+/** The PWA manifest, named for the edition (manifest.template.json holds the rest). */
+function webManifest(): string {
+  const manifest = JSON.parse(readFileSync('manifest.template.json', 'utf8')) as Record<string, unknown>
+  return JSON.stringify({ name: EDITION.name, short_name: EDITION.shortName, lang: EDITION.language, ...manifest }, null, 2) + '\n'
+}
+
+/**
+ * The edition in the app: its strings in index.html, its PWA manifest, and its texts and covers
+ * served at /catalog/ and /covers/ (the URLs saved books and narration positions are keyed by).
+ */
+function edition(): Plugin {
+  const files = (url: string) => {
+    const [, dir, name] = url.split('?')[0].match(/^\/(catalog|covers)\/([\w.-]+)$/) ?? []
+    const file = dir && join(editionDir, dir === 'catalog' ? 'texts' : 'covers', name)
+    return file && existsSync(file) ? file : null
+  }
+  return {
+    name: 'edition',
+    config: () => ({ resolve: { alias: { '@edition': editionDir } } }),
+    transformIndexHtml: {
+      order: 'pre',
+      handler: html => html.replace(/\{\{edition\.(\w+)\}\}/g, (_, key: string) => {
+        const value = EDITION[key as keyof EditionConfig]
+        if (typeof value !== 'string') throw new Error(`index.html: no string ${key} in edition/config.json`)
+        return escapeHtml(value)
+      }),
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url === '/manifest.json') {
+          res.setHeader('content-type', 'application/manifest+json')
+          return res.end(webManifest())
+        }
+        const file = files(req.url ?? '')
+        if (!file) return next()
+        res.setHeader('content-type', file.endsWith('.json') ? 'application/json' : 'image/webp')
+        createReadStream(file).pipe(res)
+      })
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'manifest.json', source: webManifest() })
+    },
+    writeBundle(options) {
+      const out = options.dir!
+      cpSync(join(editionDir, 'texts'), join(out, 'catalog'), { recursive: true })
+      if (existsSync(join(editionDir, 'covers'))) cpSync(join(editionDir, 'covers'), join(out, 'covers'), { recursive: true })
+    },
+  }
 }
 
 /** A static page per book, read/<slug>/index.html, and a sitemap listing them (books#47). */
@@ -27,29 +89,29 @@ function bookPages(): Plugin {
       const shell = bundle['index.html']
       if (shell?.type !== 'asset') throw new Error('book pages: no index.html in the build')
       // Unreachable narration server: the pages just leave out the audiobook line
-      const { manifest } = parseManifest(await fetch(MANIFEST_URL, { signal: AbortSignal.timeout(20_000) })
+      const { manifest } = parseManifestFor(await fetch(`${datasetBase(EDITION.audio.dataset)}/manifest.json`, { signal: AbortSignal.timeout(20_000) })
         .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-        .catch(e => { this.warn(`narration manifest: ${e}`); return {} }))
+        .catch(e => { this.warn(`narration manifest: ${e}`); return {} }), CATALOG)
       for (const book of CATALOG) {
-        const { chapters } = JSON.parse(readFileSync(`public${book.contentPath}`, 'utf8')) as { chapters: { title: string; content: string }[] }
+        const { chapters } = JSON.parse(readFileSync(join(editionDir, 'texts', `${book.id}.json`), 'utf8')) as { chapters: { title: string; content: string }[] }
         this.emitFile({
           type: 'asset',
           fileName: `read/${book.id}/index.html`,
           source: bookPage(String(shell.source), book, {
             chapterTitles: chapters.map(c => c.title),
             opening: openingParagraphs(chapters[0].content),
-            narrated: preparedCount(manifest, book.id),
+            narrated: narratedCount(manifest, book.id, EDITION.audio.voice),
             hasCover: COVERS.has(book.id),
-          }),
+          }, EDITION),
         })
       }
-      this.emitFile({ type: 'asset', fileName: 'sitemap.xml', source: sitemap(CATALOG.map(b => b.id)) })
+      this.emitFile({ type: 'asset', fileName: 'sitemap.xml', source: sitemap(CATALOG.map(b => b.id), EDITION.site) })
     },
   }
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), bookPages(), VitePWA(pwaOptions({
+  plugins: [react(), tailwindcss(), edition(), bookPages(), VitePWA(pwaOptions({
     workbox: {
       // The book pages are for search engines; the installed app opens books from the shell
       globIgnores: ['read/**'],

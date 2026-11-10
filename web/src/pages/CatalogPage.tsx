@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CATALOG, GENRES, ALL_TAGS, formatYear, readPath, type CatalogBook } from '../data/catalog'
+import { CATALOG, GENRES, ALL_TAGS } from '../data/catalog'
+import { formatYear, readPath, type CatalogBook } from '../data/book'
 import { BookCover } from '../components/BookCover'
 import { NavBar } from '../components/NavBar'
 import { booksInProgress, progressPercent, useFinished, type BookProgress } from '../hooks/useReadingProgress'

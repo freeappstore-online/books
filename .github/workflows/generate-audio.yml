@@ -21,8 +21,8 @@ on:
         options: [narrate, titles, manifest]
         default: narrate
       voice:
-        description: Kokoro voice id
-        default: af_heart
+        description: Kokoro voice id (empty for the edition's, audio.voice in edition/config.json)
+        default: ''
       books:
         description: Space-separated catalogue slugs, e.g. alice-in-wonderland (required); titles and manifest modes also take all-existing
         required: true
@@ -35,10 +35,9 @@ permissions:
   contents: read
 
 env:
-  REPO: serge-ivo/books-audio
   HF_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
   HF_HUB_DISABLE_PROGRESS_BARS: '1'
-  VOICE: ${{ inputs.voice }}
+  VOICE_INPUT: ${{ inputs.voice }}
   BOOKS: ${{ inputs.books }}
   FORCE: ${{ inputs.force && '--force' || '' }}
   TITLES: ${{ inputs.mode == 'titles' && '--titles' || '' }}
@@ -51,6 +50,11 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+      # The dataset and default voice are the edition's (edition/config.json, books#53)
+      - name: Edition audio settings
+        run: |
+          echo "REPO=$(jq -r .audio.dataset edition/config.json)" >> "$GITHUB_ENV"
+          echo "VOICE=${VOICE_INPUT:-$(jq -r .audio.voice edition/config.json)}" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -65,7 +69,7 @@ jobs:
       - run: pip install -q -r scripts/audio/requirements.txt
       - run: hf repos create "$REPO" --repo-type dataset --public --exist-ok
       - id: plan
-        run: echo "matrix=$(python scripts/audio/plan.py web/public/catalog "$REPO" "$VOICE" $FORCE $TITLES $BOOKS)" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(python scripts/audio/plan.py edition/texts "$REPO" "$VOICE" $FORCE $TITLES $BOOKS)" >> "$GITHUB_OUTPUT"
 
   generate:
     needs: plan
@@ -80,6 +84,11 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+      # The dataset and default voice are the edition's (edition/config.json, books#53)
+      - name: Edition audio settings
+        run: |
+          echo "REPO=$(jq -r .audio.dataset edition/config.json)" >> "$GITHUB_ENV"
+          echo "VOICE=${VOICE_INPUT:-$(jq -r .audio.voice edition/config.json)}" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -97,7 +106,7 @@ jobs:
       - name: Narrate and upload
         env:
           UNITS: ${{ matrix.units }}
-        run: python scripts/audio/generate.py models web/public/catalog "$REPO" "$VOICE" $TITLES $UNITS
+        run: python scripts/audio/generate.py models edition/texts "$REPO" "$VOICE" $TITLES $UNITS
 
   manifest:
     needs: [plan, generate]
@@ -112,6 +121,11 @@ jobs:
           [ -n "${BOOKS// }" ] || { echo "::error::Name the books, or all-existing (books#27)"; exit 1; }
           [ "$BOOKS" = all-existing ] || [[ " $BOOKS " != *" all-existing "* ]] || { echo "::error::all-existing stands alone"; exit 1; }
       - uses: actions/checkout@v4
+      # The dataset and default voice are the edition's (edition/config.json, books#53)
+      - name: Edition audio settings
+        run: |
+          echo "REPO=$(jq -r .audio.dataset edition/config.json)" >> "$GITHUB_ENV"
+          echo "VOICE=${VOICE_INPUT:-$(jq -r .audio.voice edition/config.json)}" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -120,4 +134,4 @@ jobs:
       - run: pip install -q -r scripts/audio/requirements.txt
       # Shards publish it as they go; this catches a shard that died before its last commit.
       # Manifest mode: publishes what is already in the dataset for the named books.
-      - run: python scripts/audio/manifest.py web/public/catalog "$REPO" "$VOICE" $BOOKS
+      - run: python scripts/audio/manifest.py edition/texts "$REPO" "$VOICE" $BOOKS

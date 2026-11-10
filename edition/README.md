@@ -1,4 +1,17 @@
-# The catalogue's books
+# This app's edition
+
+Everything in this folder belongs to this app alone: its config, its books, their texts and covers.
+Everything outside it is the engine, shared by every language app. A language app is a fork that keeps
+its own `edition/` and takes the engine from `books` ([docs/editions.md](../docs/editions.md)).
+
+| File | Holds |
+|---|---|
+| `config.json` | the app's id, name, language, addresses, index.html title and descriptions, and narration (`audio.dataset`, `audio.voice`, `audio.engine`) |
+| `books/<slug>.toml` | one book each, described below |
+| `sources.lock.json` | the SHA-256 of every source file a book is built from ([docs/catalogue-pipeline.md](../docs/catalogue-pipeline.md)) |
+| `texts/`, `books.json`, `covers/`, `covers.json` | generated from the book files, see below |
+
+## The catalogue's books
 
 Each book in the catalogue is one file, `books/<slug>.toml`, and that file is the only place the book
 is described (books#38). The slug is the file name. It is also the book's id in the app, its address
@@ -8,9 +21,9 @@ Everything else is generated from these files:
 
 | Generated | By | Holds |
 |---|---|---|
-| `web/public/catalog/<slug>.json` | `scripts/catalog/fetch.py` | the text, split into chapters |
-| `web/src/data/books.json` | `scripts/catalog/books.py` (also run by `fetch.py`) | what the app lists, with each book's chapter count and reading time |
-| `web/public/covers/<slug>.webp`, `web/src/data/covers.ts` | `scripts/catalog/covers.py` | the covers |
+| `edition/texts/<slug>.json` | `scripts/catalog/fetch.py` | the text, split into chapters |
+| `edition/books.json` | `scripts/catalog/books.py` (also run by `fetch.py`) | what the app lists, with each book's chapter count and reading time |
+| `edition/covers/<slug>.webp`, `edition/covers.json` | `scripts/catalog/covers.py` | the covers |
 
 Never edit a generated file by hand. CI's *Catalogue pipeline* workflow checks that `books.json`
 matches the book files and that every text rebuilds from its source unchanged. After you edit only a
@@ -91,12 +104,12 @@ Exactly one of:
 - `none = "why"`: a legacy text without a reproducible source. QA fails until it is replaced.
 
 Every Gutenberg file or Standard Ebooks source archive a book is built from is pinned by its SHA-256 in
-`scripts/catalog/sources.lock.json` (see the pipeline guide).
+`edition/sources.lock.json` (see the pipeline guide).
 
 ### Split options
 
 Start with none. Add one only when the built book shows a problem (`qa.py` flags it, or the chapter
-list is wrong). The existing book files are worked examples: `grep -l "heads_only" catalog/books/*`.
+list is wrong). The existing book files are worked examples: `grep -l "heads_only" edition/books/*`.
 
 | Option | Type | What it does |
 |---|---|---|

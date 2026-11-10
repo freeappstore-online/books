@@ -1,23 +1,27 @@
-"""The catalogue's books: one file per book, catalog/books/<slug>.toml (books#38).
+"""The catalogue's books: one file per book, edition/books/<slug>.toml (books#38).
 
 A book's file is the only place it is described: what the app shows about it, where its text comes
 from and how that text is split ([source]), and where its cover comes from ([cover]). The format is
 documented in catalog/README.md. Everything else is derived from these files:
 
-- web/public/catalog/<slug>.json, the text: fetch.py
-- web/src/data/books.json, the list the app shows (with each book's chapter count and reading
+- edition/texts/<slug>.json, the text: fetch.py
+- edition/books.json, the list the app shows (with each book's chapter count and reading
   time, measured from its text): write_app_data(), which fetch.py calls after a build. After
   editing only a book's metadata, run this module on its own: python3 scripts/catalog/books.py
-- web/public/covers/<slug>.webp and web/src/data/covers.ts: covers.py
+- edition/covers/<slug>.webp and edition/covers.json: covers.py
 
 usage: books.py [--check]   (--check writes nothing and exits 1 if books.json is out of date)
 """
 import json, os, re, sys, tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BOOKS_DIR = os.path.join(ROOT, "catalog/books")
-TEXT_DIR = os.path.join(ROOT, "web/public/catalog")
-APP_DATA = os.path.join(ROOT, "web/src/data/books.json")
+# Everything this app owns lives in its edition (docs/editions.md); BOOKS_EDITION points elsewhere (tests)
+EDITION = os.path.abspath(os.environ.get("BOOKS_EDITION") or os.path.join(ROOT, "edition"))
+with open(os.path.join(EDITION, "config.json"), encoding="utf-8") as _f:
+    CONFIG = json.load(_f)
+BOOKS_DIR = os.path.join(EDITION, "books")
+TEXT_DIR = os.path.join(EDITION, "texts")
+APP_DATA = os.path.join(EDITION, "books.json")
 WORDS_PER_MIN = 250
 
 REQUIRED = {"title": str, "author": str, "author_bio": str, "year": int, "genre": str, "tags": list,
@@ -31,7 +35,7 @@ SPLIT_OPTIONS = {"heads", "heads_only", "toc", "start", "start_n", "end", "end_n
 def _validate(slug: str, book: dict):
     """A book file is hand-edited, so say exactly what is wrong with one rather than fail later."""
     def bad(msg):
-        raise SystemExit(f"catalog/books/{slug}.toml: {msg}")
+        raise SystemExit(f"edition/books/{slug}.toml: {msg}")
     for key, kind in {**REQUIRED, **OPTIONAL}.items():
         if key in book and not isinstance(book[key], kind):
             bad(f"{key} must be a {kind.__name__}")
@@ -133,8 +137,8 @@ if __name__ == "__main__":
         with open(APP_DATA, encoding="utf-8") as f:
             current = f.read()
         if current != render_app_data():
-            raise SystemExit("web/src/data/books.json is out of date: run python3 scripts/catalog/books.py")
-        print(f"web/src/data/books.json is up to date ({len(CATALOG)} books)")
+            raise SystemExit("edition/books.json is out of date: run python3 scripts/catalog/books.py")
+        print(f"edition/books.json is up to date ({len(CATALOG)} books)")
     else:
         write_app_data()
-        print(f"wrote web/src/data/books.json ({len(CATALOG)} books)")
+        print(f"wrote edition/books.json ({len(CATALOG)} books)")

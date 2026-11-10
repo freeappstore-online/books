@@ -3,25 +3,20 @@
 // Patch the existing FreeWebStore section with catalog.json's fragments and
 // upload books.js with set_site_script. Keep website styling in FreeWebStore.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { resolve, dirname } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const root = resolve(here, '../..')
 const out = process.argv[2]
 if (!out) throw new Error('Pass an output directory: node scripts/marketing/generate.mjs /tmp/books-marketing')
-const require = createRequire(resolve(root, 'web/package.json'))
-const ts = require('typescript')
-async function dataModule(path) {
-  const source = readFileSync(resolve(root, path), 'utf8')
-  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText
-  return import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`)
-}
-const CATALOG = JSON.parse(readFileSync(resolve(root, 'web/src/data/books.json'), 'utf8'))  // generated from catalog/books/*.toml
-const { COVERS } = await dataModule('web/src/data/covers.ts')
-const APP = 'https://books.freeappstore.online'
-const SITE = 'https://books.freewebstore.online/'
+// The edition's books, covers and addresses (docs/editions.md)
+const edition = resolve(process.env.BOOKS_EDITION || resolve(here, '../../edition'))
+const json = file => JSON.parse(readFileSync(resolve(edition, file), 'utf8'))
+const CONFIG = json('config.json')
+const CATALOG = json('books.json')  // generated from edition/books/*.toml
+const COVERS = new Set(json('covers.json'))
+const APP = CONFIG.site
+const SITE = CONFIG.marketingSite
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 const genres = ['Fiction', 'Non-Fiction', 'Drama', 'Poetry']
 // Alice is the deliberately selected first audiobook. Do not advertise the

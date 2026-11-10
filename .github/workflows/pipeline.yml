@@ -2,7 +2,7 @@ name: Catalogue pipeline
 
 # Guards the catalogue's texts (books#38): unit and consistency tests of the pipeline scripts,
 # and a rebuild of every book from its locked Gutenberg source, compared with the committed
-# web/public/catalog/<slug>.json. A hand edit of a catalogue file, or a change to fetch.py that
+# edition/texts/<slug>.json. A hand edit of a catalogue file, or a change to fetch.py that
 # re-splits a book (which would misalign its narration, keyed by chapter), fails here.
 # How to run the same checks locally: docs/catalogue-pipeline.md.
 
@@ -10,18 +10,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'catalog/**'
+      - 'edition/**'
       - 'scripts/**'
-      - 'web/public/catalog/**'
-      - 'web/public/covers/**'
       - 'web/src/data/**'
       - '.github/workflows/pipeline.yml'
   pull_request:
     paths:
-      - 'catalog/**'
+      - 'edition/**'
       - 'scripts/**'
-      - 'web/public/catalog/**'
-      - 'web/public/covers/**'
       - 'web/src/data/**'
       - '.github/workflows/pipeline.yml'
   workflow_dispatch:
