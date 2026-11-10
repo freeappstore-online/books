@@ -17,7 +17,7 @@ export function setTheme(theme: Theme) {
   applyTheme(theme)
 }
 
-export function applyTheme(theme: Theme) {
+function applyTheme(theme: Theme) {
   const root = document.documentElement
   root.setAttribute('data-theme', theme)
   const paper = getComputedStyle(root).getPropertyValue('--paper').trim()

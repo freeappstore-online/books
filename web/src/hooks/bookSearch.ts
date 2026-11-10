@@ -24,7 +24,7 @@ function foldChar(ch: string): string {
   return f
 }
 
-export function foldText(text: string): string {
+function foldText(text: string): string {
   const lower = text.toLowerCase()
   // A few chars lower-case to two (İ): then fold char by char to keep offsets
   if (lower.length !== text.length) return text.replace(/[^]/g, foldChar)

@@ -17,7 +17,7 @@ import {
 
 const CACHE = 'books-offline-v1'
 const SAVED_KEY = 'bp-offline-books'
-export const OFFLINE_CHANGED_EVENT = 'bp-offline-changed'
+const OFFLINE_CHANGED_EVENT = 'bp-offline-changed'
 
 /**
  * What a save keeps of a book. Saves made with an older format are offered
