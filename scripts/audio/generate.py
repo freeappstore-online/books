@@ -1,4 +1,4 @@
-"""Narrate catalogue chapters with Kokoro, the model the app runs in the browser (books#4).
+"""Narrate catalogue chapters with Kokoro (books#4).
 
 usage: generate.py MODELS_DIR CATALOG_DIR REPO VOICE SLUG:CHAPTER...
 Writes VOICE/<slug>/<chapter>.m4a (AAC, mono) and VOICE/<slug>/<chapter>.timings.json, and
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         if os.path.isdir(OUT) and (final or time.time() - last_upload > UPLOAD_EVERY):
             chapters = sum(f.endswith(".m4a") for _, _, names in os.walk(OUT) for f in names)
             if chapters:
-                publish(catalog, repo, os.listdir(f"{OUT}/{voice}"), OUT, f"{voice}: {chapters} chapter(s)")
+                publish(catalog, repo, voice, os.listdir(f"{OUT}/{voice}"), OUT, f"{voice}: {chapters} chapter(s)")
                 print(f"uploaded {chapters} chapter(s)", flush=True)
             shutil.rmtree(OUT)
             last_upload = time.time()

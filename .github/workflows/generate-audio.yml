@@ -1,9 +1,11 @@
 name: Generate audio
 
-# Pre-generates Kokoro narration for the public catalogue and uploads it to the
+# Pre-generates Kokoro narration for the named catalogue books and uploads it to the
 # serge-ivo/books-audio dataset on Hugging Face (books#4), with sentence timings
 # (books#22). Run by hand; it skips chapters already uploaded, so a re-run resumes.
 # Each shard commits the manifest with its chapters, so they appear as they finish (books#18).
+# Only the books named in `books` are narrated and published: there is no "every book" mode,
+# and other books' audio in the dataset stays out of the manifest (books#27).
 
 on:
   workflow_dispatch:
@@ -12,8 +14,8 @@ on:
         description: Kokoro voice id
         default: af_heart
       books:
-        description: Space-separated slugs (empty = every book not yet narrated)
-        default: ''
+        description: Space-separated catalogue slugs to narrate, e.g. alice-in-wonderland (required)
+        required: true
       force:
         description: Narrate these books again even where audio exists
         type: boolean
@@ -40,6 +42,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Require named books
+        run: '[ -n "${BOOKS// }" ] || { echo "::error::Name the books to narrate (books#27)"; exit 1; }'
       - run: pip install -q -r scripts/audio/requirements.txt
       - run: hf repos create "$REPO" --repo-type dataset --public --exist-ok
       - id: plan
@@ -78,8 +82,8 @@ jobs:
         run: python scripts/audio/generate.py models web/public/catalog "$REPO" "$VOICE" $UNITS
 
   manifest:
-    needs: generate
-    if: ${{ !cancelled() }}
+    needs: [plan, generate]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,4 +92,4 @@ jobs:
           python-version: '3.12'
       - run: pip install -q -r scripts/audio/requirements.txt
       # Shards publish it as they go; this catches a shard that died before its last commit
-      - run: python scripts/audio/manifest.py web/public/catalog "$REPO" $BOOKS
+      - run: python scripts/audio/manifest.py web/public/catalog "$REPO" "$VOICE" $BOOKS

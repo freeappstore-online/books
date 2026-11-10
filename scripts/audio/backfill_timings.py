@@ -1,6 +1,6 @@
 """Make timings.json for chapters narrated before generate.py wrote them (books#22).
 
-usage: backfill_timings.py CATALOG_DIR REPO VOICE [SLUG...]
+usage: backfill_timings.py CATALOG_DIR REPO VOICE SLUG...
 For every VOICE/<slug>/<chapter>.m4a in REPO without a .timings.json next to it, finds the pauses
 in the audio and picks the ones that best line up with the sentence boundaries: a boundary is
 expected where its share of the chapter's characters falls in the speech, and longer pauses are
@@ -10,6 +10,7 @@ together. Re-narrating gives exact timings; this is the cheap way for audio that
 import json, os, subprocess, sys, tempfile
 import numpy as np
 from huggingface_hub import HfApi, hf_hub_download
+from manifest import check_slugs
 from segments import sentences, utf16
 
 SR = 24_000
@@ -79,12 +80,13 @@ def align(content: str, gaps: np.ndarray, start: float, end: float) -> list:
 
 if __name__ == "__main__":
     catalog, repo, voice, *only = sys.argv[1:]
+    check_slugs(catalog, only)  # the named books only (books#27)
     api = HfApi()
     files = set(api.list_repo_files(repo, repo_type="dataset"))
     todo: dict[str, list[int]] = {}
     for f in sorted(files):
         parts = f.split("/")
-        if len(parts) == 3 and parts[0] == voice and parts[2].endswith(".m4a") and (not only or parts[1] in only):
+        if len(parts) == 3 and parts[0] == voice and parts[2].endswith(".m4a") and parts[1] in only:
             if f.removesuffix(".m4a") + ".timings.json" not in files:
                 todo.setdefault(parts[1], []).append(int(parts[2].removesuffix(".m4a")))
     for slug, chapters in todo.items():

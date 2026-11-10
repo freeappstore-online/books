@@ -130,11 +130,12 @@ Add books in batches rather than one commit per book.
 ## Narration
 
 Narration runs in the **Generate audio** workflow (`.github/workflows/generate-audio.yml`), started by
-hand. It runs from `main`, so push the text first.
+hand. It runs from `main`, so push the text first. For now only Alice (`alice-in-wonderland`) is to be
+narrated: the owner decided on 2026-11-10 to perfect one book before starting others (books#27).
 
 ```bash
 gh workflow run generate-audio.yml -R freeappstore-online/books \
-  -f books="north-and-south villette"     # space-separated slugs; empty = every un-narrated chapter
+  -f books="north-and-south villette"     # space-separated slugs, required; there is no "every book" mode
   # -f voice=af_heart                      # Kokoro voice id; af_heart is the default
   # -f force=true                          # narrate these books again even where audio exists
 gh run watch -R freeappstore-online/books  # or the Actions tab
@@ -142,7 +143,8 @@ gh run watch -R freeappstore-online/books  # or the Actions tab
 
 The workflow runs three jobs:
 
-1. **plan** (`scripts/audio/plan.py`) lists every chapter that has no
+1. **plan** (`scripts/audio/plan.py`) refuses an empty `books` or a slug that is not in the catalogue,
+   then lists every chapter of `books` that has no
    `<voice>/<slug>/<chapter>.m4a` in the dataset yet (every chapter of `books` with `force`). It packs them into shards of up to 600k characters
    (about 4 h of CPU), keeping a book's chapters together.
 2. **generate** (`scripts/audio/generate.py`) runs one job per shard, at most 15 at once. It narrates
@@ -155,14 +157,18 @@ The workflow runs three jobs:
    that dies keeps most of its work.
 3. **manifest** (`scripts/audio/manifest.py`) rebuilds the `books`' entries in `manifest.json` from
    the dataset once all shards are done, in case one died before its last commit. Only the run's
-   `books` are touched (every book when `books` is empty), so audio of other books in the dataset
-   stays out of the app until a run is asked for them. The app's "Audiobook" badge,
-   its Play button and playback come from this file (`web/src/hooks/preparedAudio.ts`).
+   `books` in the run's `voice` are touched; every other entry is kept as it is, so audio of other
+   books in the dataset (the cancelled full-catalogue run left partial audio of 53 books there) stays
+   out of the app until a run is asked for them. A chapter's seconds are where its `timings.json` ends,
+   or an estimate from the file size (a few % short) for audio without timings. The app's "Audiobook"
+   badge, its Play button and playback come from this file (`web/src/hooks/preparedAudio.ts`).
 
 Audio narrated before timings existed (everything uploaded before books#22, except Alice) has no
 `timings.json`. Either narrate it again with `force`, or derive timings from the pauses in the audio
-with `scripts/audio/backfill_timings.py CATALOG_DIR REPO VOICE [SLUG...]` (needs `HF_TOKEN` and ffmpeg;
+with `scripts/audio/backfill_timings.py CATALOG_DIR REPO VOICE SLUG...` (needs `HF_TOKEN` and ffmpeg;
 approximate, see books#22).
+
+`python scripts/audio/test_audio.py` tests the scripts' pure parts against the catalogue (no network).
 
 The upload uses the `HUGGINGFACE_TOKEN` repo secret (listed in `ops` `inventory.yaml`; it has write
 access to `serge-ivo/books-audio`). Never print it.
@@ -182,7 +188,9 @@ access to `serge-ivo/books-audio`). Never print it.
 ### Resuming and verifying
 
 - If a shard fails or times out (the job limit is 355 minutes), re-run the failed jobs or dispatch the
-  same `books` again. Chapters that were already uploaded are skipped.
+  same `books` again. Chapters that were already uploaded are skipped. That check only sees whether a
+  file exists, so after a `force` run that died, dispatching again *without* `force` keeps the old audio
+  of the chapters it had not reached yet; dispatch with `force` again (it narrates the whole book anew).
 - A book is done when the manifest has a duration for every chapter:
 
   ```bash
