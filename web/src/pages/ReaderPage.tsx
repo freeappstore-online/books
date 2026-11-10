@@ -16,6 +16,7 @@ import {
 } from '../hooks/annotations'
 import { sentenceRanges } from '../hooks/readAlong'
 import { getNarrationTime } from '../hooks/narration'
+import { loadHistory } from '../hooks/audioStorage'
 import { useReaderFontSize } from '../hooks/usePreferences'
 import { TextSizeControls } from '../components/TextSizeControls'
 import { saveProgress, getProgress, setFinished, useFinished } from '../hooks/useReadingProgress'
@@ -136,11 +137,17 @@ export function ReaderPage() {
     }
   }, [slug, activeChapter, excerpt, chapters, chapterStarts, loading])
 
+  // The player's book and chapter the reader last followed (or opened with), so it follows changes only
+  const followedRef = useRef<string | null>(null)
+  const playerKey = `${player.book?.slug}:${player.chapterIdx}`
+
   // Follow the player when its chapter changes (next/prev/auto-advance). Not on
-  // activeChapter changes, so the reader can browse other chapters while it plays.
+  // activeChapter changes, so the reader can browse other chapters while it plays,
+  // nor when the book opens: loadFromCatalog picks that chapter.
   useEffect(() => {
     if (!slug || chapters.length === 0) return
-    if (player.book?.slug !== slug) return
+    if (player.book?.slug !== slug || followedRef.current === playerKey) return
+    followedRef.current = playerKey
     const target = chapters[player.chapterIdx]
     if (!target) return
     setActiveChapter(prev => {
@@ -148,7 +155,7 @@ export function ReaderPage() {
       window.scrollTo(0, 0)
       return target.id
     })
-  }, [player.book?.slug, player.chapterIdx, slug, chapters])
+  }, [player.book?.slug, player.chapterIdx, playerKey, slug, chapters])
 
   // Escape closes the text size panel and returns focus to its button (books#15)
   useEffect(() => {
@@ -187,6 +194,8 @@ export function ReaderPage() {
       }))
       setChapters(chaptersList)
       const saved = getProgress(bookSlug)
+      // The chapter the player is on now isn't one to follow to
+      followedRef.current = playerKey
       // A bookmark or highlight opened from My books: /read/<slug>?ch=<idx>&at=<offset>
       const params = new URLSearchParams(window.location.search)
       const linkedIdx = params.has('ch') ? Number(params.get('ch')) : NaN
@@ -195,7 +204,12 @@ export function ReaderPage() {
         setFocus({ offset: Number(params.get('at')) || 0 })
         return
       }
-      const startIdx = saved && saved.chapterIdx < chaptersList.length ? saved.chapterIdx : 0
+      // The chapter being read aloud while this book plays; else the later of where it was read and listened to
+      const heard = loadHistory().find(h => h.slug === bookSlug)
+      const lastIdx = player.book?.slug === bookSlug && player.playing ? player.chapterIdx
+        : heard && heard.timestamp > (saved?.lastRead ?? 0) ? heard.chapterIdx
+        : saved?.chapterIdx ?? 0
+      const startIdx = lastIdx < chaptersList.length ? lastIdx : 0
       pendingScrollRef.current = saved?.chapterIdx === startIdx ? saved.scroll ?? 0 : 0
       if (chaptersList.length > 0) setActiveChapter(chaptersList[startIdx].id)
     } catch {
