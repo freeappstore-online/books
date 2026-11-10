@@ -8,9 +8,14 @@ author_bio = "English writer. Central figure of modernist literature."
 description = "A family visits their summer home on the Isle of Skye across a decade, time passing through the characters' inner lives."
 excerpt = "\"Yes, of course, if it's fine tomorrow,\" said Mrs. Ramsay."
 
+narration_revision = 'complete-text-v1'
+
 [look]
 gradient = "from-cyan-900 to-blue-950"
 accent = "#0891B2"
 
 [source]
-none = "Not on Project Gutenberg: the committed text is kept as it is."
+standardebooks = "virginia-woolf/to-the-lighthouse"
+revision = "e8c69c4ec7580134270a0027a714a0d5473bac4a"
+expected_chapters = 42
+ending = '; it was finished. Yes, she thought, laying down her brush in extreme fatigue, I have had my vision.'

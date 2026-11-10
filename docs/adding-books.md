@@ -91,9 +91,10 @@ check fails on it. Fix the text with split options in the book's `[source]` (or 
 python3 scripts/catalog/qa.py ~/.cache/books-gutenberg north-and-south
 ```
 
-`qa.py` compares the output with the Gutenberg body and exits 1 if it flags a book: leftover licence
-text, `[Illustration]` markers, contents lists, a text much shorter than its source, or chapters that are
-too small or too large. Fix a flag with split options in the book's `[source]`. If the book deliberately leaves out more
+`qa.py` compares every chapter with a rebuild from its pinned source and exits 1 for missing sources,
+changed or truncated content, empty chapters, mismatched narration revisions, or leftover licence
+text, illustration markers and contents lists. Authorial short chapters and repeated narrator names
+are accepted when they match the source. Fix a flag with split options in the book's `[source]`. If a Gutenberg book deliberately leaves out more
 than 10% (a translator's introduction, notes), add it to `SHORT_OK` with the reason.
 
 Then read it in the app (`pnpm dev`):
@@ -281,13 +282,23 @@ file exists. So:
   text.
 - If it only changes the words inside a chapter, that chapter's audio is stale.
 
-In either case, narrate the book again; if it now has fewer chapters, delete its folder from the
-dataset first:
+In either case, set a new `narration_revision` in the book's TOML (for example,
+`narration_revision = "complete-text-v1"`) and rebuild its text and app data before publishing.
+The generated text JSON and catalogue carry `narrationRevision`. Its narration, timings and title
+clips then use `<voice>/<slug>/<revision>/<i>.*`, leaving earlier recordings untouched. The app
+rejects older network or offline manifests unless the book's `extras.textRevision` matches, so
+replacing a text never plays stale audio. The audio planner treats the new revision as missing;
+the generator writes the new folder and the manifest publisher sets the matching revision only
+for that folder's recordings.
+
+After the text has been published, narrate the named book when its narration is approved:
 
 ```bash
-hf repos delete-files serge-ivo/books-audio "af_heart/<slug>/*" --repo-type dataset   # only if chapters were dropped
-gh workflow run generate-audio.yml -R freeappstore-online/books -f books="<slug>" -f force=true
+gh workflow run generate-audio.yml -R freeappstore-online/books -f books="<slug>"
 ```
+
+Increment the revision again whenever the text or chapter order changes. Books without a revision
+keep their existing paths. Do not remove a revision to make old audio appear again.
 
 A book that is removed from the catalogue keeps its audio in the dataset, and `manifest.py` ignores it
 because it builds the manifest from `web/public/catalog`.

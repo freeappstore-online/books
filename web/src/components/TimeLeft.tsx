@@ -1,9 +1,7 @@
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
-import { useNarrationPosition } from '../hooks/narration'
+import { getNarrationTime, useNarrationPosition } from '../hooks/narration'
 import { chapterSeconds, isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
-
-/** Reading speed for books without narration: about 250 words a minute */
-const READ_CHARS_PER_SECOND = 25
+import { remainingTime } from '../hooks/remainingTime'
 
 function formatDuration(seconds: number): string {
   const minutes = Math.round(seconds / 60)
@@ -23,8 +21,8 @@ interface Props {
 }
 
 /**
- * Time left in the chapter and the book (books#13): from the narration's lengths at
- * the listening speed when the book is narrated, else from the text at a reading pace.
+ * Reading and listening have separate positions and speeds. Missing audio never
+ * contributes a reading estimate to the listening total.
  */
 export function TimeLeft({ slug, chapters, chapterIdx, scroll }: Props) {
   const manifest = usePreparedManifest()
@@ -32,25 +30,24 @@ export function TimeLeft({ slug, chapters, chapterIdx, scroll }: Props) {
   const position = useNarrationPosition()
   if (!chapters[chapterIdx]) return null
   const narrated = Boolean(manifest && isNarrated(manifest, slug))
-  const seconds = (i: number) => {
-    const narration = narrated ? chapterSeconds(manifest!, slug, i) : null
-    return narration !== null ? narration / player.rate : chapters[i].content.length / READ_CHARS_PER_SECOND
-  }
-  // Listening to this chapter: where the narration is; otherwise where the reader is
   const url = narrated ? preparedUrl(slug, chapterIdx) : null
-  const listening = player.book?.slug === slug && player.playing && position.url === url && position.duration > 0
-  const done = listening ? position.time / position.duration : scroll
-  const chapterLeft = seconds(chapterIdx) * (1 - Math.min(1, Math.max(0, done)))
-  let bookLeft = chapterLeft
-  for (let i = chapterIdx + 1; i < chapters.length; i++) bookLeft += seconds(i)
+  // Pausing keeps the audio's position; scrolling only changes the reading estimate.
+  const played = url ? position.url === url && position.duration > 0 ? position.time : getNarrationTime(url) : 0
+  const times = remainingTime(chapters, chapters.map((_, i) => manifest ? chapterSeconds(manifest, slug, i) : null),
+    chapterIdx, scroll, player.rate, played)
 
   return (
     <p
       className="text-xs text-text-dim mb-4 md:mb-6"
-      title={narrated ? `Listening time at ${player.rate}× speed` : 'Estimated reading time'}
     >
-      {formatDuration(chapterLeft)} left in chapter
-      {chapters.length > 1 && <> · {formatDuration(bookLeft)} left in book</>}
+      <span className="block" title="Estimated reading time">
+        Reading: {formatDuration(times.readingChapter)} left in chapter
+        {chapters.length > 1 && <> · {formatDuration(times.readingBook)} left in book</>}
+      </span>
+      {narrated && <span className="block">
+        Listening at {player.rate}×: {times.audioChapter === null ? 'no audio for this chapter' : `${formatDuration(times.audioChapter)} left in chapter`}
+        {chapters.length > 1 && <> · {formatDuration(times.audioBook)} {times.partial ? 'available audio left' : 'left in book'}</>}
+      </span>}
     </p>
   )
 }

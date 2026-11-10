@@ -321,7 +321,7 @@ function ContinueShelf({ entries, dim }: { entries: { book: CatalogBook; narrate
 /** Partly narrated books say how many chapters can be listened to (books#31). */
 function AudiobookPill({ narrated, chapters }: { narrated: number; chapters: number }) {
   return (
-    <span className="shrink-0 rounded-full bg-success/15 px-2 py-1 text-[11px] font-semibold text-success">
+    <span className="shrink-0 rounded-full bg-success-soft px-2 py-1 text-[11px] font-semibold text-success">
       Audiobook{narrated < chapters && ` · ${narrated}/${chapters} ch`}
     </span>
   )

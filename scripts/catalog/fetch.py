@@ -25,6 +25,7 @@ import hashlib, json, os, re, sys, time, urllib.request
 from concurrent.futures import ProcessPoolExecutor
 
 from books import CATALOG, ROOT, read_time, source, write_app_data  # noqa: F401 (read_time: qa, tests)
+import standardebooks
 
 OUT_DIR = os.path.join(ROOT, "web/public/catalog")
 LOCK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sources.lock.json")
@@ -39,7 +40,7 @@ UNSOURCED = {slug for slug, book in CATALOG.items() if source(book) is None}
 # ── Download ──
 
 class Lock:
-    """sources.lock.json: Gutenberg id -> SHA-256 of the file its book was built from."""
+    """sources.lock.json: Gutenberg id or pinned archive key -> source-file SHA-256."""
 
     def __init__(self, mode: str = "verify"):  # verify | record (add new ids) | relock (accept changes)
         self.mode = mode
@@ -49,7 +50,7 @@ class Lock:
                 self.hashes = json.load(f)
         self.dirty = False
 
-    def check(self, gid: int, data: bytes):
+    def check(self, gid: int | str, data: bytes):
         digest, known = hashlib.sha256(data).hexdigest(), self.hashes.get(str(gid))
         if known == digest:
             return
@@ -58,13 +59,14 @@ class Lock:
             self.dirty = True
             return
         what = "is not in sources.lock.json" if known is None else "differs from the one in sources.lock.json"
-        raise SystemExit(f"pg{gid}.txt {what}: Gutenberg may have re-released it. Rebuild the book, review "
+        name = f"pg{gid}.txt" if isinstance(gid, int) else gid
+        raise SystemExit(f"{name} {what}: the source may have changed. Rebuild the book, review "
                          f"the result (and its narration, which is keyed by chapter), then run with --relock.")
 
     def save(self):
         if self.dirty:
             with open(LOCK_PATH, "w") as f:
-                json.dump(dict(sorted(self.hashes.items(), key=lambda kv: int(kv[0]))), f, indent=0)
+                json.dump(dict(sorted(self.hashes.items(), key=lambda kv: (not kv[0].isdigit(), int(kv[0]) if kv[0].isdigit() else kv[0]))), f, indent=0)
                 f.write("\n")
 
 
@@ -566,10 +568,20 @@ def volumes(slug: str) -> list[tuple[int, dict]]:
 
 
 def build(cache: str, slug: str) -> list[dict]:
+    if 'standardebooks' in CATALOG[slug]['source']:
+        return standardebooks_chapters(cache, slug)
     chapters = []
     for gid, opts in volumes(slug):
         raw = download(cache, gid)
         chapters += split_book(gutenberg_body(raw), opts, gutenberg_title(raw))
+    return chapters
+
+
+def standardebooks_chapters(cache: str, slug: str) -> list[dict]:
+    src = CATALOG[slug]['source']
+    chapters = standardebooks.chapters(standardebooks.archive(cache, src, LOCK, USER_AGENT))
+    if len(chapters) != src['expected_chapters'] or not chapters[-1]['content'].endswith(src['ending']):
+        raise SystemExit(f'{slug}: Standard Ebooks source failed its reviewed chapter count or ending')
     return chapters
 
 
@@ -595,11 +607,14 @@ def main():
     cache, *slugs = [a for a in args if a not in ("--check", "--relock")]
     unknown = [s for s in slugs if s not in BOOKS]
     if unknown:
-        raise SystemExit(f"no catalog/books/<slug>.toml with a Gutenberg source: {' '.join(unknown)}")
+        raise SystemExit(f"no catalog/books/<slug>.toml with a reproducible source: {' '.join(unknown)}")
     LOCK.mode = "verify" if check else "relock" if relock else "record"
     os.makedirs(cache, exist_ok=True)
     slugs = slugs or list(BOOKS)
     for slug in slugs:  # downloads one at a time (Gutenberg's rate limit), checking the lock
+        if 'standardebooks' in CATALOG[slug]['source']:
+            standardebooks.archive(cache, CATALOG[slug]['source'], LOCK, USER_AGENT)
+            continue
         for gid, _ in volumes(slug):
             download(cache, gid)
     LOCK.save()  # the build workers read the lock afresh
@@ -608,14 +623,16 @@ def main():
         built = pool.map(build, [cache] * len(slugs), slugs)
     for slug, chapters in zip(slugs, built):
         if check:
-            committed = json.load(open(os.path.join(OUT_DIR, f"{slug}.json"), encoding="utf-8"))["chapters"]
-            diff = differences(chapters, committed)
+            committed = json.load(open(os.path.join(OUT_DIR, f"{slug}.json"), encoding="utf-8"))
+            diff = differences(chapters, committed["chapters"])
+            if committed.get('narrationRevision') != CATALOG[slug].get('narration_revision'):
+                diff.append('narrationRevision differs from the book metadata')
             if diff:
                 changed.append(slug)
                 print(f"{slug}: DIFFERS\n" + "".join(f"    {d}\n" for d in diff), end="", flush=True)
             continue
         with open(os.path.join(OUT_DIR, f"{slug}.json"), "w", encoding="utf-8") as f:
-            json.dump({"chapters": chapters}, f, ensure_ascii=False, separators=(",", ":"))
+            json.dump({"chapters": chapters, **({"narrationRevision": CATALOG[slug]['narration_revision']} if CATALOG[slug].get('narration_revision') else {})}, f, ensure_ascii=False, separators=(",", ":"))
         print(f"{slug}: {len(chapters)} chapters, {sum(len(c['content']) for c in chapters):,} chars", flush=True)
     if check:
         n = len(slugs)

@@ -82,9 +82,15 @@ Exactly one of:
   start = 'DEDICATION OF VOLUME II\.'
   ```
 
-- `none = "why"`: the book is not on Gutenberg; its committed text is kept as it is and never rebuilt.
+- `standardebooks = "author-slug/book-slug"`, plus `revision = "<40-character Git commit>"`:
+  a complete Standard Ebooks edition, read in EPUB spine order from the pinned
+  `https://github.com/standardebooks/author-slug_book-slug` source archive. Add
+  `expected_chapters = N` and `ending = 'the reviewed final words'`. The archive hash is locked
+  just like a Gutenberg source. Only bodymatter is included; chapter titles, publisher pages and
+  part-divider headings stay out of narrated content. Authorial short chapters and verse are kept.
+- `none = "why"`: a legacy text without a reproducible source. QA fails until it is replaced.
 
-Every Gutenberg file a book is built from is pinned by its SHA-256 in
+Every Gutenberg file or Standard Ebooks source archive a book is built from is pinned by its SHA-256 in
 `scripts/catalog/sources.lock.json` (see the pipeline guide).
 
 ### Split options

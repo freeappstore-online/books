@@ -1,13 +1,14 @@
-"""Check the catalogue texts against their Gutenberg sources (books#5).
+"""Check complete catalogue texts against their reproducible sources (books#5).
 
 usage: qa.py CACHE_DIR [SLUG...]
-Per book: Gutenberg body chars vs output chars, chapter count, min/max chapter size, and flags
-for anything that should not be in the text. Exits 1 if any book is flagged.
+Per book: exact source rebuild, completeness anchors, source/body retention for Gutenberg,
+chapter sizes and flags for anything that should not be in the text. Exits 1 on any failure.
 """
 import json, os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fetch import BOOKS, OUT_DIR, UNSOURCED, download, gutenberg_body, volumes  # noqa: E402
+from books import CATALOG  # noqa: E402
+from fetch import BOOKS, OUT_DIR, UNSOURCED, build, differences, download, gutenberg_body, volumes  # noqa: E402
 
 # Books that knowingly keep less than 90% of their Gutenberg body, and why.
 SHORT_OK = {
@@ -43,12 +44,43 @@ LEFTOVER = [
 ]
 
 
+def check_chapters(chapters: list[dict], source: dict | None = None) -> list[str]:
+    """Structural checks, with reviewed completeness anchors where the source supplies them.
+
+    A short chapter or a repeated narrator's name is legitimate literary content. Neither is
+    proof of truncation; compare with the reproducible source instead of exempting whole books.
+    """
+    flags = []
+    if not chapters:
+        return ["no chapters"]
+    if any(not c.get("title", "").strip() for c in chapters):
+        flags.append("empty title")
+    if any(not c.get("content", "").strip() for c in chapters):
+        flags.append("empty chapter content")
+    source = source or {}
+    if "expected_chapters" in source and len(chapters) != source["expected_chapters"]:
+        flags.append(f"expected {source['expected_chapters']} chapters, found {len(chapters)}")
+    if "ending" in source and not chapters[-1]["content"].rstrip().endswith(source["ending"]):
+        flags.append("last chapter does not end with the reviewed source ending")
+    return flags
+
+
 def report(cache: str, slug: str) -> list[str]:
-    chapters = json.load(open(os.path.join(OUT_DIR, f"{slug}.json"), encoding="utf-8"))["chapters"]
+    with open(os.path.join(OUT_DIR, f"{slug}.json"), encoding="utf-8") as f:
+        data = json.load(f)
+    chapters = data["chapters"]
     out_chars = sum(len(c["content"]) for c in chapters)
     sizes = [len(c["content"]) for c in chapters]
-    flags = []
+    flags = check_chapters(chapters, CATALOG[slug]["source"])
+    if data.get("narrationRevision") != CATALOG[slug].get("narration_revision"):
+        flags.append("narrationRevision does not match the book's narration_revision; rebuild the text")
+    pct = None
     if slug in BOOKS:
+        # An exact rebuild catches even a one-character cutoff, which a 90% size threshold cannot.
+        flags.extend(f"source mismatch: {d}" for d in differences(build(cache, slug), chapters))
+    else:
+        flags.append("no reproducible full-text source; completeness cannot be verified")
+    if "gutenberg" in CATALOG[slug]["source"] or "volumes" in CATALOG[slug]["source"]:
         body = "".join(gutenberg_body(download(cache, g)) for g in dict.fromkeys(g for g, _ in volumes(slug)))
         # compare on non-space characters: unwrapping and markup removal change whitespace
         src = len(re.sub(r"\s|_|\[Illustration[^\]]*\]", "", body))
@@ -58,32 +90,35 @@ def report(cache: str, slug: str) -> list[str]:
             flags.append(f"retained {pct:.0f}%")
         if pct > 101:
             flags.append(f"grew {pct:.0f}%")
-    else:
-        pct = 0
-    small = [c["title"] for c in chapters if len(c["content"]) < 300]
-    if small:
-        flags.append(f"{len(small)} chapter(s) < 300 chars: {small[:3]}")
-    titles = [c["title"] for c in chapters]
-    dups = sorted({t for t in titles if titles.count(t) > 1})
-    if dups:
-        flags.append(f"duplicate titles: {dups[:3]}")
-    if any(not t.strip() for t in titles):
-        flags.append("empty title")
     text = "\n".join(c["content"] for c in chapters)
     for name, pat in LEFTOVER:
         m = re.search(pat, text, re.I if name == "ebook" else 0)
         if m:
             flags.append(f"{name}: …{text[max(0, m.start() - 40): m.end() + 40]!r}…")
-    status = "UNSOURCED" if slug in UNSOURCED else f"{pct:5.1f}%"
+    status = "UNSOURCED" if slug in UNSOURCED else "SOURCE" if pct is None else f"{pct:5.1f}%"
     print(f"{slug:36} {status:>9} {out_chars:>9,} chars {len(chapters):4} ch "
-          f"min {min(sizes):>7,} max {max(sizes):>7,}" + ("".join(f"\n    ! {f}" for f in flags)))
+          f"min {min(sizes, default=0):>7,} max {max(sizes, default=0):>7,}" + ("".join(f"\n    ! {f}" for f in flags)))
     return flags
+
+
+def check_books(cache: str, slugs: list[str]) -> list[str]:
+    """Report every failure, including missing sources, rather than stop at the first book."""
+    bad = []
+    for slug in slugs:
+        try:
+            flags = report(cache, slug)
+        except (OSError, ValueError, KeyError, TypeError, SystemExit) as err:
+            print(f"{slug:36}\n    ! source/check failed: {err}")
+            flags = [str(err)]
+        if flags:
+            bad.append(slug)
+    return bad
 
 
 def main():
     cache, *slugs = sys.argv[1:]
     slugs = slugs or sorted(set(BOOKS) | UNSOURCED)
-    bad = [s for s in slugs if report(cache, s) and s not in UNSOURCED]  # known excerpts, kept as they are
+    bad = check_books(cache, slugs)
     total = sum(os.path.getsize(os.path.join(OUT_DIR, f)) for f in os.listdir(OUT_DIR))
     biggest = max(os.listdir(OUT_DIR), key=lambda f: os.path.getsize(os.path.join(OUT_DIR, f)))
     print(f"\n{len(slugs)} books, {len(bad)} flagged; catalogue {total / 1e6:.1f} MB, "

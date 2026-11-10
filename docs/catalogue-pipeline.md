@@ -40,8 +40,13 @@ So once a book is narrated:
   committed files, writing nothing. It prints what differs, chapter by chapter, and exits 1 on any
   difference. It runs on every core, so the whole catalogue takes under a minute.
 - **The *Catalogue pipeline* workflow** (`.github/workflows/pipeline.yml`) runs the unit and
-  consistency tests and `--check` on every push that touches `scripts/`, the catalogue or its data.
+  consistency tests, `--check` and `qa.py` on every push that touches `scripts/`, the catalogue or its data.
   It caches the Gutenberg files between runs.
+- **`qa.py CACHE_DIR [SLUG...]`** verifies the committed text against an exact source rebuild,
+  checks reviewed chapter counts and final words when provided, and checks for empty chapters,
+  leftover licence text and markup. A book without a reproducible full-text source fails; it is
+  never exempted as an excerpt. Short chapters and repeated narrator names are allowed because
+  they can be part of the author's text. All failing books are reported, including source errors.
 
 `scripts/catalog/test_catalog.py` holds the unit tests. Its consistency tests check that:
 - `books.json` is exactly what the book files generate (so it was not edited by hand, and no one
@@ -54,6 +59,7 @@ So once a book is narrated:
 python3 scripts/catalog/test_catalog.py                            # needs Pillow
 python3 scripts/catalog/books.py --check                           # books.json up to date
 python3 scripts/catalog/fetch.py ~/.cache/books-gutenberg --check   # downloads missing sources first
+python3 scripts/catalog/qa.py ~/.cache/books-gutenberg             # completeness and content checks
 ```
 
 ## Changing the pipeline

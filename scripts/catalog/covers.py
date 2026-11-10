@@ -92,7 +92,7 @@ def main():
         if slug in SOURCES:
             data = download_commons(cache, slug)
         else:  # a book not on Gutenberg has a cover only from Commons
-            data = None if slug in SKIP or slug not in BOOKS else download(cache, volumes(slug)[0][0])
+            data = None if slug in SKIP or slug not in BOOKS or isinstance(BOOKS[slug], dict) else download(cache, volumes(slug)[0][0])
         if data is None:
             if os.path.exists(out):
                 os.remove(out)

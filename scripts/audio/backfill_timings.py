@@ -10,7 +10,7 @@ together. Re-narrating gives exact timings; this is the cheap way for audio that
 import json, os, subprocess, sys, tempfile
 import numpy as np
 from huggingface_hub import HfApi, hf_hub_download
-from manifest import CHAPTER, check_slugs
+from manifest import CHAPTER, audio_prefix, check_slugs
 from segments import sentences, utf16
 
 SR = 24_000
@@ -84,19 +84,21 @@ if __name__ == "__main__":
     api = HfApi()
     files = set(api.list_repo_files(repo, repo_type="dataset"))
     todo: dict[str, list[int]] = {}
+    prefixes = {audio_prefix(catalog, voice, slug): slug for slug in only}
     for f in sorted(files):
-        parts = f.split("/")
-        if len(parts) == 3 and parts[0] == voice and CHAPTER.fullmatch(f) and parts[1] in only:
+        prefix, name = f.rsplit("/", 1) if "/" in f else ("", f)
+        if prefix in prefixes and CHAPTER.fullmatch(f):
             if f.removesuffix(".m4a") + ".timings.json" not in files:
-                todo.setdefault(parts[1], []).append(int(parts[2].removesuffix(".m4a")))
+                todo.setdefault(prefixes[prefix], []).append(int(name.removesuffix(".m4a")))
     for slug, chapters in todo.items():
         book = json.load(open(f"{catalog}/{slug}.json"))["chapters"]
+        prefix = audio_prefix(catalog, voice, slug)
         with tempfile.TemporaryDirectory() as out:
-            os.makedirs(f"{out}/{voice}/{slug}")
+            os.makedirs(f"{out}/{prefix}")
             for i in sorted(chapters):
-                gaps, start, end = pauses(hf_hub_download(repo, f"{voice}/{slug}/{i}.m4a", repo_type="dataset"))
+                gaps, start, end = pauses(hf_hub_download(repo, f"{prefix}/{i}.m4a", repo_type="dataset"))
                 segments = align(book[i]["content"], gaps, start, end)
-                json.dump({"v": 1, "segments": segments}, open(f"{out}/{voice}/{slug}/{i}.timings.json", "w"),
+                json.dump({"v": 1, "segments": segments}, open(f"{out}/{prefix}/{i}.timings.json", "w"),
                           separators=(",", ":"))
                 print(f"{slug}:{i}: {len(segments)} segments, {len(gaps)} pauses", flush=True)
             api.upload_folder(repo_id=repo, repo_type="dataset", folder_path=out,

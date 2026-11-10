@@ -4,11 +4,14 @@ usage: python3 scripts/catalog/test_catalog.py   (needs Pillow for covers.py; no
 The full regression check, every book rebuilt and compared with its committed file, is
 `fetch.py CACHE_DIR --check`; it needs the Gutenberg sources and runs in CI (pipeline.yml).
 """
-import json, os, re, sys, unittest
+import io, json, os, re, sys, tarfile, unittest
+from unittest.mock import mock_open, patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fetch  # noqa: E402
 import books  # noqa: E402
+import qa  # noqa: E402
+import standardebooks  # noqa: E402
 from covers import COVERS_TS, OUT_DIR as COVERS_DIR  # noqa: E402
 from fetch import BOOKS, differences, is_verse, number, read_time, split_book, titlecase  # noqa: E402
 
@@ -119,6 +122,62 @@ class Lock(unittest.TestCase):
             lock.check(1, b"changed")
 
 
+class CatalogueQA(unittest.TestCase):
+    def test_short_chapters_and_repeated_narrators_are_not_truncation(self):
+        chapters = [{"title": "Darl", "content": "We went home."},
+                    {"title": "Darl", "content": "My mother is a fish."}]
+        self.assertEqual(qa.check_chapters(chapters), [])
+
+    def test_reviewed_chapter_count_and_ending_detect_truncation(self):
+        chapters = [{"title": "One", "content": "The end."}]
+        self.assertEqual(qa.check_chapters(chapters, {"expected_chapters": 1, "ending": "The end."}), [])
+        self.assertIn("expected 2 chapters, found 1", qa.check_chapters(chapters, {"expected_chapters": 2}))
+        self.assertIn("reviewed source ending", qa.check_chapters(chapters, {"ending": "Their last words."})[0])
+
+    def test_empty_books_chapters_and_titles_fail(self):
+        self.assertEqual(qa.check_chapters([]), ["no chapters"])
+        self.assertEqual(qa.check_chapters([{"title": " ", "content": " "}]),
+                         ["empty title", "empty chapter content"])
+
+    def test_unsourced_books_are_never_exempted(self):
+        with patch.object(qa, "report", return_value=["no reproducible source"]), \
+                patch.object(qa, "UNSOURCED", {"excerpt"}):
+            self.assertEqual(qa.check_books("unused", ["excerpt"]), ["excerpt"])
+
+    def test_a_plausible_excerpt_without_a_source_fails_completeness(self):
+        text = {"chapters": [{"title": "One", "content": "This looks like a complete paragraph."}]}
+        with patch.object(qa, "CATALOG", {"excerpt": {"source": {"none": "kept"}}}), \
+                patch.object(qa, "BOOKS", {}), patch.object(qa, "UNSOURCED", {"excerpt"}), \
+                patch("builtins.open", mock_open(read_data=json.dumps(text))), patch("builtins.print"):
+            self.assertTrue(any("no reproducible full-text source" in f for f in qa.report("unused", "excerpt")))
+
+    def test_a_source_failure_is_reported_and_other_books_are_checked(self):
+        with patch.object(qa, "report", side_effect=[SystemExit("source hash differs"), []]) as report, \
+                patch("builtins.print"):
+            self.assertEqual(qa.check_books("unused", ["changed", "good"]), ["changed"])
+            self.assertEqual(report.call_count, 2)
+
+    def test_source_comparison_catches_small_cutoffs_below_the_size_threshold(self):
+        original = [{"title": "One", "content": "A long chapter. " * 1000 + "The end."}]
+        truncated = [{**original[0], "content": original[0]["content"][:-2]}]
+        with patch.object(qa, "CATALOG", {"book": {"source": {"standardebooks": "author/book"}}}), \
+                patch.object(qa, "BOOKS", {"book": {}}), \
+                patch.object(qa, "build", return_value=original), \
+                patch("builtins.open", mock_open(read_data=json.dumps({"chapters": truncated}))), \
+                patch("builtins.print"):
+            self.assertTrue(any("source mismatch" in f for f in qa.report("unused", "book")))
+
+    def test_missing_narration_revision_is_rejected_even_if_chapters_match(self):
+        chapters = [{"title": "One", "content": "The end."}]
+        book = {"source": {"standardebooks": "author/book"}, "narration_revision": "complete-text-v1"}
+        with patch.object(qa, "CATALOG", {"book": book}), \
+                patch.object(qa, "BOOKS", {"book": {}}), \
+                patch.object(qa, "build", return_value=chapters), \
+                patch("builtins.open", mock_open(read_data=json.dumps({"chapters": chapters}))), \
+                patch("builtins.print"):
+            self.assertTrue(any("narrationRevision" in f for f in qa.report("unused", "book")))
+
+
 class BookFiles(unittest.TestCase):
     GOOD = {"title": "T", "author": "A", "author_bio": "B", "year": 1900, "genre": "Fiction", "tags": [],
             "language": "en", "description": "D", "excerpt": "E", "look": {"gradient": "g", "accent": "a"},
@@ -149,6 +208,66 @@ class BookFiles(unittest.TestCase):
                          (((1, {"end": "E"}), (2, {})), {"drop": "X"}))
         self.assertIsNone(books.source({"source": {"none": "kept"}}))
 
+    def test_standardebooks_requires_pinned_reviewed_source(self):
+        src = {"standardebooks": "author/book", "revision": "a" * 40,
+               "expected_chapters": 3, "ending": "The end."}
+        books._validate("x", {**self.GOOD, "source": src})
+        self.assertEqual(books.source({"source": src}), src)
+        for key in ["revision", "expected_chapters", "ending"]:
+            with self.assertRaises(SystemExit):
+                books._validate("x", {**self.GOOD, "source": {k: v for k, v in src.items() if k != key}})
+
+
+class StandardEbooks(unittest.TestCase):
+    @staticmethod
+    def archive(files):
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w:gz") as package:
+            for name, value in files.items():
+                raw = value.encode()
+                member = tarfile.TarInfo("repo/src/epub/" + name)
+                member.size = len(raw)
+                package.addfile(member, io.BytesIO(raw))
+        return archive.getvalue()
+
+    def test_spine_bodymatter_and_authorial_text_are_preserved(self):
+        """Archive order is not reading order; publisher matter and headings are not narration."""
+        def doc(title, content, kind="bodymatter"):
+            return (f'<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+                    f'<head><title>{title}</title></head><body epub:type="{kind}">{content}</body></html>')
+        files = {
+            "content.opf": ('<package xmlns="http://www.idpf.org/2007/opf"><manifest>'
+                            '<item id="second" href="text/second.xhtml"/>'
+                            '<item id="first" href="text/first.xhtml"/>'
+                            '<item id="publisher" href="text/publisher.xhtml"/>'
+                            '</manifest><spine><itemref idref="publisher"/><itemref idref="first"/>'
+                            '<itemref idref="second"/></spine></package>'),
+            "text/second.xhtml": doc("Darl", '<section><h2>Not spoken</h2><p>My mother is a fish.</p></section>'),
+            "text/publisher.xhtml": doc("Publisher", '<p>Not the book.</p>', "frontmatter"),
+            "text/first.xhtml": doc("Darl", '<section><hgroup><h2>Not spoken</h2></hgroup>'
+                                    '<p>One <i>two</i>, three.<br/>Next line.</p>'
+                                    '<p><img alt="A drawing" src="image.svg"/></p>'
+                                    '<ol start="3"><li><p>Third.</p></li><li>Fourth.</li></ol></section>'),
+        }
+        self.assertEqual(standardebooks.chapters(self.archive(files)), [
+            {"title": "Chapter 1: Darl", "content": "One two, three.\nNext line.\n\n[A drawing]\n\n3. Third.\n\n4. Fourth."},
+            {"title": "Chapter 2: Darl", "content": "My mother is a fish."},
+        ])
+
+    def test_a_part_containing_text_is_not_silently_discarded(self):
+        files = {
+            "content.opf": ('<package xmlns="http://www.idpf.org/2007/opf"><manifest>'
+                            '<item id="part" href="text/part.xhtml"/></manifest>'
+                            '<spine><itemref idref="part"/></spine></package>'),
+            "text/part.xhtml": ('<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+                                '<head><title>The Window</title></head><body epub:type="bodymatter">'
+                                '<section epub:type="part"><h2>The Window</h2>'
+                                '<section epub:type="chapter"><p>Important nested text.</p></section>'
+                                '</section></body></html>'),
+        }
+        with self.assertRaisesRegex(ValueError, "part"):
+            standardebooks.chapters(self.archive(files))
+
 
 class Consistency(unittest.TestCase):
     """The catalogue's parts must agree: the book files, books.json, the built texts, covers and the lock."""
@@ -162,11 +281,23 @@ class Consistency(unittest.TestCase):
         files = {f[:-5] for f in os.listdir(fetch.OUT_DIR) if f.endswith(".json")}
         self.assertEqual(files, set(books.CATALOG))
 
+    def test_every_text_has_the_book_narration_revision(self):
+        for slug, book in books.CATALOG.items():
+            with open(os.path.join(fetch.OUT_DIR, slug + ".json"), encoding="utf-8") as f:
+                text = json.load(f)
+            self.assertEqual(text.get("narrationRevision"), book.get("narration_revision"), slug)
+
     def test_every_source_is_locked(self):
         with open(fetch.LOCK_PATH) as f:
             lock = json.load(f)
-        gids = {str(g) for slug in BOOKS for g, _ in fetch.volumes(slug)}
-        self.assertEqual(gids - set(lock), set())
+        keys = set()
+        for slug in BOOKS:
+            src = books.CATALOG[slug]["source"]
+            if "standardebooks" in src:
+                keys.add(f"standardebooks:{src['standardebooks'].replace('/', '_')}:{src['revision']}")
+            else:
+                keys.update(str(g) for g, _ in fetch.volumes(slug))
+        self.assertEqual(keys - set(lock), set())
 
     def test_covers_ts_matches_the_cover_files(self):
         files = {f[:-5] for f in os.listdir(COVERS_DIR) if f.endswith(".webp")}

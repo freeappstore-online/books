@@ -1,9 +1,43 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  estimateAudioBytes, formatBytes, getSavedBooks, savedAudioChapters, savedBytes, type SavedBook,
+  estimateAudioBytes, fetchChapters, formatBytes, getSavedBooks, savedAudioChapters, savedBytes, type SavedBook,
 } from '../../src/hooks/offlineBooks'
 import type { PreparedManifest } from '../../src/hooks/preparedAudio'
+import { CATALOG } from '../../src/data/catalog'
+
+describe('restored text and old offline copies', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const book = CATALOG.find(b => b.id === 'as-i-lay-dying')!
+  const stale = () => Response.json({ chapters: [{ title: 'Darl', content: 'Old excerpt' }] })
+  const fresh = () => Response.json({ narrationRevision: book.narrationRevision, chapters: [{ title: 'Darl', content: 'Complete text' }] })
+  const cacheOldText = () => vi.stubGlobal('caches', { open: async () => ({ match: async () => stale() }) })
+
+  it('reads current text online instead of pairing old cached text with new audio', async () => {
+    cacheOldText()
+    vi.stubGlobal('navigator', { onLine: true })
+    const fetcher = vi.fn(async () => fresh())
+    vi.stubGlobal('fetch', fetcher)
+    expect((await fetchChapters(book.contentPath))[0].content).toBe('Complete text')
+    expect(fetcher).toHaveBeenCalledWith(book.contentPath, { cache: 'no-store' })
+  })
+
+  it('refuses mismatched saved text offline', async () => {
+    cacheOldText()
+    vi.stubGlobal('navigator', { onLine: false })
+    const fetcher = vi.fn()
+    vi.stubGlobal('fetch', fetcher)
+    await expect(fetchChapters(book.contentPath)).rejects.toThrow('Saved text is out of date')
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('refuses a server still serving the old text during a deployment', async () => {
+    cacheOldText()
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.stubGlobal('fetch', vi.fn(async () => stale()))
+    await expect(fetchChapters(book.contentPath)).rejects.toThrow('updated book text is not available')
+  })
+})
 
 const real = JSON.parse(readFileSync(new URL('../fixtures/manifest.json', import.meta.url), 'utf8')) as PreparedManifest
 const SLUG = 'alice-in-wonderland'

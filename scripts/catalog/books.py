@@ -12,7 +12,7 @@ documented in catalog/README.md. Everything else is derived from these files:
 
 usage: books.py [--check]   (--check writes nothing and exits 1 if books.json is out of date)
 """
-import json, os, sys, tomllib
+import json, os, re, sys, tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BOOKS_DIR = os.path.join(ROOT, "catalog/books")
@@ -22,7 +22,7 @@ WORDS_PER_MIN = 250
 
 REQUIRED = {"title": str, "author": str, "author_bio": str, "year": int, "genre": str, "tags": list,
             "language": str, "description": str, "excerpt": str, "look": dict, "source": dict}
-OPTIONAL = {"cover": dict}
+OPTIONAL = {"cover": dict, "narration_revision": str}
 # fetch.py's split options (what each does: catalog/README.md)
 SPLIT_OPTIONS = {"heads", "heads_only", "toc", "start", "start_n", "end", "end_n", "drop", "first", "sub",
                  "nosub", "label", "titles", "level", "keep", "cut", "gloss", "strip", "verse"}
@@ -41,11 +41,22 @@ def _validate(slug: str, book: dict):
         bad(f"unknown key(s) {', '.join(sorted(unknown))}")
     if set(book["look"]) != {"gradient", "accent"}:
         bad("[look] needs exactly gradient and accent")
+    if "narration_revision" in book and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", book["narration_revision"]):
+        bad("narration_revision must be a nonempty folder name using letters, digits, dots, underscores or hyphens")
     src = book["source"]
-    if sum(k in src for k in ("gutenberg", "volumes", "none")) != 1:
-        bad("[source] needs exactly one of gutenberg, volumes (with [[source.volumes]]) or none")
+    if sum(k in src for k in ("gutenberg", "volumes", "standardebooks", "none")) != 1:
+        bad("[source] needs exactly one of gutenberg, volumes, standardebooks or none")
+    if "standardebooks" in src:
+        if not isinstance(src["standardebooks"], str) or not re.fullmatch(r"[a-z0-9-]+/[a-z0-9-]+", src["standardebooks"]):
+            bad("standardebooks must be author-slug/book-slug")
+        if not isinstance(src.get("revision"), str) or not re.fullmatch(r"[0-9a-f]{40}", src["revision"]):
+            bad("standardebooks needs a pinned 40-character revision")
+        if not isinstance(src.get("expected_chapters"), int) or src["expected_chapters"] <= 0:
+            bad("standardebooks needs positive expected_chapters")
+        if not isinstance(src.get("ending"), str) or not src["ending"].strip():
+            bad("standardebooks needs the reviewed final text in ending")
     for opts in [src, *src.get("volumes", [])]:
-        if unknown := set(opts) - SPLIT_OPTIONS - {"gutenberg", "volumes", "none"}:
+        if unknown := set(opts) - SPLIT_OPTIONS - {"gutenberg", "volumes", "none", "standardebooks", "revision", "expected_chapters", "ending"}:
             bad(f"unknown [source] option(s) {', '.join(sorted(unknown))}")
     cover = book.get("cover", {})
     if cover and sum(k in cover for k in ("commons", "none")) != 1 or set(cover) - {"commons", "crop", "none"}:
@@ -71,6 +82,8 @@ def source(book: dict):
     src = book["source"]
     if "none" in src:
         return None
+    if "standardebooks" in src:
+        return src
     opts = {k: v for k, v in src.items() if k not in ("gutenberg", "volumes")}
     if "volumes" in src:
         return tuple((v["gutenberg"], {k: x for k, x in v.items() if k != "gutenberg"}) for v in src["volumes"]), opts
@@ -97,7 +110,8 @@ def app_data() -> list[dict]:
                     "year": b["year"], "genre": b["genre"], "tags": b["tags"], "language": b["language"],
                     "description": b["description"], "excerpt": b["excerpt"], "chapters": len(chapters),
                     "readTime": read_time(words), "coverGradient": b["look"]["gradient"],
-                    "coverAccent": b["look"]["accent"], "contentPath": f"/catalog/{slug}.json"})
+                    "coverAccent": b["look"]["accent"], "contentPath": f"/catalog/{slug}.json",
+                    **({"narrationRevision": b["narration_revision"]} if b.get("narration_revision") else {})})
     return out
 
 

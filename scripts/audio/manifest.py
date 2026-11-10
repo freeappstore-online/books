@@ -23,6 +23,17 @@ EXTRAS = "extras"
 CHAPTER = re.compile(r".+/\d+\.m4a")  # VOICE/<slug>/<i>.m4a; a title clip is <i>.title.m4a
 
 
+def text_revision(catalog: str, slug: str) -> str | None:
+    with open(os.path.join(catalog, f"{slug}.json")) as source:
+        return json.load(source).get("narrationRevision")
+
+
+def audio_prefix(catalog: str, voice: str, slug: str) -> str:
+    """Changed texts get fresh paths; old chapter-index audio is never reused."""
+    revision = text_revision(catalog, slug)
+    return f"{voice}/{slug}/{revision}" if revision else f"{voice}/{slug}"
+
+
 def check_slugs(catalog: str, slugs: list[str]) -> None:
     """Exit unless slugs names at least one book, all of them in the catalogue."""
     if not slugs:
@@ -64,7 +75,8 @@ def build(catalog: str, voice: str, seconds: dict[str, float], slugs: list[str])
     books: dict = {}
     for slug in slugs:
         n = len(json.load(open(os.path.join(catalog, f"{slug}.json")))["chapters"])
-        chapters = [seconds.get(f"{voice}/{slug}/{i}.m4a") for i in range(n)]
+        prefix = audio_prefix(catalog, voice, slug)
+        chapters = [seconds.get(f"{prefix}/{i}.m4a") for i in range(n)]
         if any(chapters):
             books[slug] = [round(s, 1) if s else None for s in chapters]
     return books
@@ -76,11 +88,14 @@ def build_extras(catalog: str, voice: str, seconds: dict[str, float], timed: set
     extras: dict = {}
     for slug in slugs:
         n = len(json.load(open(os.path.join(catalog, f"{slug}.json")))["chapters"])
-        narrated = [f"{voice}/{slug}/{i}.m4a" for i in range(n) if f"{voice}/{slug}/{i}.m4a" in seconds]
+        prefix = audio_prefix(catalog, voice, slug)
+        narrated = [f"{prefix}/{i}.m4a" for i in range(n) if f"{prefix}/{i}.m4a" in seconds]
         if narrated:
-            titles = [seconds.get(f"{voice}/{slug}/{i}.title.m4a") for i in range(n)]
+            titles = [seconds.get(f"{prefix}/{i}.title.m4a") for i in range(n)]
             extras[slug] = {"timings": all(p in timed for p in narrated),
                             "titles": [round(s, 2) if s else None for s in titles]}
+            if revision := text_revision(catalog, slug):
+                extras[slug]["textRevision"] = revision
     return extras
 
 
@@ -116,7 +131,7 @@ def publish(catalog: str, repo: str, voice: str, slugs: list[str], folder: str |
             manifest = json.load(open(hf_hub_download(repo, "manifest.json", repo_type="dataset", revision=head)))
         except EntryNotFoundError:
             manifest = {}
-        ours = {f"{voice}/{slug}" for slug in slugs}
+        ours = {audio_prefix(catalog, voice, slug) for slug in slugs}
         remote = {f.path: f.blob_id for f in api.list_repo_tree(repo, repo_type="dataset", recursive=True, revision=head)
                   if f.path.rsplit("/", 1)[0] in ours}
 

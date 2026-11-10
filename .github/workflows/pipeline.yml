@@ -61,6 +61,8 @@ jobs:
           restore-keys: gutenberg-
       - name: Rebuild every book and compare with the committed files
         run: python scripts/catalog/fetch.py ~/.cache/books-gutenberg --check
+      - name: Verify source completeness and clean book content
+        run: python scripts/catalog/qa.py ~/.cache/books-gutenberg
       - uses: actions/cache/save@v4
         if: always()
         with:

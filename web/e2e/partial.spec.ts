@@ -16,6 +16,27 @@ function consoleErrors(page: Page): string[] {
   return errors
 }
 
+test('reading and available audio have separate time estimates, retained when paused', async ({ context, baseURL, page }) => {
+  await stubHuggingFace(context, baseURL!, { partial: true })
+  await page.goto(`/read/${PARTIAL}`)
+  const reading = page.locator('article span[title="Estimated reading time"]')
+  const listening = page.locator('article span', { hasText: /^Listening at/ })
+  await expect(reading).toContainText('Reading:')
+  // The middle fifteen chapters contribute no audio: 603 s, not a reading estimate for them.
+  await expect(listening).toContainText('10 min available audio left')
+  await headerPlay(page).click()
+  await expectPlaying(page, 0, 1)
+  for (let i = 0; i < 3; i++) await page.getByLabel('Forward 30 seconds').click()
+  await expect(listening).toContainText('9 min available audio left')
+  await bar(page).getByRole('button', { name: 'Pause', exact: true }).click()
+  await expect(listening).toContainText('9 min available audio left')
+  // An unnarrated chapter still has its reading estimate and only the later audio is counted.
+  await openChapter(page, 4, partial)
+  await expect(listening).toContainText('no audio for this chapter')
+  await expect(listening).toContainText('5 min available audio left')
+  await expect(reading).toContainText('left in book')
+})
+
 test('plays the narrated chapters without read-along, passes over the rest, which have no Play', async ({ context, baseURL, page }) => {
   const hf = await stubHuggingFace(context, baseURL!, { partial: true })
   const errors = consoleErrors(page)

@@ -13,7 +13,7 @@ audio in VOICE, since a title is only ever added to a narrated chapter.
 """
 import json, os, sys
 from huggingface_hub import HfApi
-from manifest import ALL_EXISTING, check_slugs, existing
+from manifest import ALL_EXISTING, audio_prefix, check_slugs, existing
 from segments import spoken_title
 
 SHARD_CHARS = 600_000
@@ -30,7 +30,7 @@ shards: list[list] = []
 size = SHARD_CHARS
 for slug in sorted(set(only)):
     for i, ch in enumerate(json.load(open(os.path.join(catalog, f"{slug}.json")))["chapters"]):
-        audio = f"{voice}/{slug}/{i}"
+        audio = f"{audio_prefix(catalog, voice, slug)}/{i}"
         if titles:
             chars = len(spoken_title(ch["title"])) + TITLE_COST
             if chars == TITLE_COST or f"{audio}.m4a" not in files or (f"{audio}.title.m4a" in files and not force):

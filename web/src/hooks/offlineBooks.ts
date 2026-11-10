@@ -131,9 +131,19 @@ export async function fetchSavedOr(url: string): Promise<Response> {
 
 /** A catalogue book's chapters, from the saved copy when there is one; throws when they can't be loaded. */
 export async function fetchChapters(contentPath: string): Promise<AudioChapter[]> {
-  const res = await fetchSavedOr(contentPath)
-  if (!res.ok) throw new Error(`${res.status} for ${contentPath}`)
-  const data = await res.json() as { chapters: { title: string; content: string }[] }
+  const expected = CATALOG.find(book => book.contentPath === contentPath)?.narrationRevision
+  const read = async (res: Response) => {
+    if (!res.ok) throw new Error(`${res.status} for ${contentPath}`)
+    return await res.json() as { narrationRevision?: string; chapters: { title: string; content: string }[] }
+  }
+  let data = await read(await fetchSavedOr(contentPath))
+  if (expected && data.narrationRevision !== expected) {
+    // A saved excerpt must not meet the restored edition's new narration. Keep its
+    // offline save intact for the normal Update flow; read fresh text online only.
+    if (!navigator.onLine) throw new Error('Saved text is out of date. Reconnect and update this book.')
+    data = await read(await fetch(contentPath, { cache: 'no-store' }))
+    if (data.narrationRevision !== expected) throw new Error('The updated book text is not available yet.')
+  }
   return data.chapters.map((ch, i) => ({ id: `ch-${i}`, title: ch.title, content: ch.content }))
 }
 

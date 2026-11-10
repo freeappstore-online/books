@@ -4,6 +4,7 @@
  * .github/workflows/generate-audio.yml.
  */
 import { useEffect, useState } from 'react'
+import { CATALOG } from '../data/catalog'
 
 const BASE = 'https://huggingface.co/datasets/serge-ivo/books-audio/resolve/main'
 export const MANIFEST_URL = `${BASE}/manifest.json`
@@ -16,6 +17,7 @@ export type PreparedManifest = Record<string, Record<string, (number | null)[]>>
 
 /** What else a book has published next to its narration (books#37) */
 export interface BookExtras {
+  textRevision?: string
   /** Its narrated chapters have read-along timings */
   timings?: boolean
   /** Seconds of each chapter's spoken title clip (null: none) */
@@ -38,7 +40,16 @@ export function parseManifest(raw: unknown): { manifest: PreparedManifest; extra
       if (key === 'extras') {
         if (isObject(value)) extras = value as ManifestExtras
       } else if (isObject(value) && Object.values(value).every(Array.isArray)) {
-        manifest[key] = value as Record<string, (number | null)[]>
+        manifest[key] = { ...value } as Record<string, (number | null)[]>
+      }
+    }
+  }
+  // Restored or re-split texts must never play a previous edition's chapter audio,
+  // including a manifest saved for offline use before the text was replaced.
+  for (const [voice, books] of Object.entries(manifest)) {
+    for (const book of CATALOG) {
+      if (book.narrationRevision && extras?.[voice]?.[book.id]?.textRevision !== book.narrationRevision) {
+        delete books[book.id]
       }
     }
   }
@@ -119,7 +130,12 @@ export function preparedCount(m: PreparedManifest, slug: string, voice = VOICE):
 }
 
 export function preparedUrl(slug: string, chapterIdx: number, voice = VOICE): string {
-  return `${BASE}/${voice}/${slug}/${chapterIdx}.m4a`
+  return `${BASE}/${voice}/${narrationPath(slug)}/${chapterIdx}.m4a`
+}
+
+function narrationPath(slug: string): string {
+  const revision = CATALOG.find(book => book.id === slug)?.narrationRevision
+  return revision ? `${slug}/${revision}` : slug
 }
 
 /** Whether a chapter may have read-along timings: unknown (true) for a manifest without extras. */
@@ -135,10 +151,10 @@ export function titleSeconds(extras: ManifestExtras | null, slug: string, chapte
 
 /** The chapter's title, spoken: played before it when "Read chapter titles" is on (books#37). */
 export function preparedTitleUrl(slug: string, chapterIdx: number, voice = VOICE): string {
-  return `${BASE}/${voice}/${slug}/${chapterIdx}.title.m4a`
+  return `${BASE}/${voice}/${narrationPath(slug)}/${chapterIdx}.title.m4a`
 }
 
 /** Sentence timings for read-along: {"v":1,"segments":[[charStart,charEnd,startSec,endSec],...]} */
 export function preparedTimingsUrl(slug: string, chapterIdx: number, voice = VOICE): string {
-  return `${BASE}/${voice}/${slug}/${chapterIdx}.timings.json`
+  return `${BASE}/${voice}/${narrationPath(slug)}/${chapterIdx}.timings.json`
 }

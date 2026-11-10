@@ -19,6 +19,8 @@ export interface CatalogBook {
   coverGradient: string
   coverAccent: string
   contentPath: string
+  /** Revised texts use a separate narration folder and matching manifest revision. */
+  narrationRevision?: string
 }
 
 export const CATALOG: CatalogBook[] = BOOKS

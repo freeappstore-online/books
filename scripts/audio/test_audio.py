@@ -2,14 +2,14 @@
 
 usage: python scripts/audio/test_audio.py   (needs requirements.txt installed and ffmpeg; no network)
 """
-import json, os, subprocess, sys, tempfile, unittest
+import contextlib, io, json, os, runpy, subprocess, sys, tempfile, unittest
 from types import SimpleNamespace
 from unittest import mock
 import numpy as np
 import soundfile as sf
 import manifest
 from generate import encode, loudness, trim
-from manifest import build, build_extras, check_slugs, duration, merge
+from manifest import audio_prefix, build, build_extras, check_slugs, duration, merge
 from segments import sentences, spoken_title, utf16
 
 CATALOG = os.path.join(os.path.dirname(__file__), "../../web/public/catalog")
@@ -17,6 +17,30 @@ ALICE = "alice-in-wonderland"
 
 
 class Manifest(unittest.TestCase):
+    def test_restored_text_never_reuses_legacy_audio(self):
+        with tempfile.TemporaryDirectory() as catalog:
+            slug = "restored-book"
+            with open(os.path.join(catalog, f"{slug}.json"), "w") as f:
+                json.dump({"narrationRevision": "complete-text-v1", "chapters": [{"title": "One", "content": "Full text"}]}, f)
+            legacy = {f"af_heart/{slug}/0.m4a": 300}
+            prefix = audio_prefix(catalog, "af_heart", slug)
+            self.assertEqual(prefix, f"af_heart/{slug}/complete-text-v1")
+            self.assertEqual(build(catalog, "af_heart", legacy, [slug]), {})
+            self.assertEqual(build_extras(catalog, "af_heart", legacy, set(), [slug]), {})
+            revised = {**legacy, f"{prefix}/0.m4a": 600}
+            self.assertEqual(build(catalog, "af_heart", revised, [slug]), {slug: [600]})
+            self.assertEqual(build_extras(catalog, "af_heart", revised, set(), [slug])[slug]["textRevision"], "complete-text-v1")
+            # A normal regeneration must schedule this chapter even though its old-index
+            # recording exists, without requiring a destructive force or dataset cleanup.
+            api = mock.Mock()
+            api.list_repo_files.return_value = list(legacy)
+            output = io.StringIO()
+            with mock.patch("huggingface_hub.HfApi", return_value=api), \
+                 mock.patch.object(sys, "argv", ["plan.py", catalog, "repo", "af_heart", slug]), \
+                 contextlib.redirect_stdout(output):
+                runpy.run_path(os.path.join(os.path.dirname(__file__), "plan.py"), run_name="__main__")
+            self.assertEqual(json.loads(output.getvalue())["include"][0]["units"], f"{slug}:0")
+
     def test_slugs_are_required_and_must_exist(self):
         with self.assertRaises(SystemExit):
             check_slugs(CATALOG, [])

@@ -22,7 +22,7 @@ import json, os, re, shutil, subprocess, sys, time
 import numpy as np
 import soundfile as sf
 from huggingface_hub import hf_hub_url
-from manifest import publish
+from manifest import audio_prefix, publish
 from segments import sentences, spoken_title, utf16
 
 UPLOAD_EVERY = 10 * 60
@@ -131,7 +131,8 @@ if __name__ == "__main__":
         if slug not in books:
             books[slug] = json.load(open(f"{catalog}/{slug}.json"))["chapters"]
         chapter = books[slug][int(i)]
-        dest = f"{OUT}/{voice}/{slug}"
+        prefix = audio_prefix(catalog, voice, slug)
+        dest = f"{OUT}/{prefix}"
         os.makedirs(dest, exist_ok=True)
         t = time.time()
         if not titles_only:
@@ -147,7 +148,7 @@ if __name__ == "__main__":
             samples = trim(samples, sr)
             sf.write(f"{dest}/{i}.title.wav", samples, sr)
             if titles_only and slug not in level:  # its first chapter in this run, read over HTTP
-                level[slug] = loudness(hf_hub_url(repo, f"{voice}/{slug}/{i}.m4a", repo_type="dataset"))[0]
+                level[slug] = loudness(hf_hub_url(repo, f"{prefix}/{i}.m4a", repo_type="dataset"))[0]
                 print(f"{slug}: chapters at {level[slug]} LUFS", flush=True)
             encode(f"{dest}/{i}.title.wav", f"{dest}/{i}.title.m4a", level.get(slug, LUFS))
             os.remove(f"{dest}/{i}.title.wav")

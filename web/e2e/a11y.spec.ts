@@ -1,13 +1,13 @@
 // Accessibility (books#15): axe-core finds nothing on every page, playing and
-// with menus open, in light and dark. Desktop engines only; see keyboard.spec.ts.
+// with menus open, in light, dark and sepia. Desktop engines only; see keyboard.spec.ts.
 import { test, expect, stubHuggingFace, axeViolations, bar, headerPlay, SLUG } from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.skip(({ browserName }) => browserName === 'webkit', 'desktop keyboard and layout: Chromium and Firefox')
 
-for (const theme of ['light', 'dark'] as const) {
+for (const theme of ['light', 'dark', 'sepia'] as const) {
   test.describe(`${theme} theme`, () => {
-    test.use({ colorScheme: theme })
+    test.use({ colorScheme: theme === 'sepia' ? 'light' : theme })
 
     test.beforeEach(async ({ context, baseURL }) => {
       await stubHuggingFace(context, baseURL!)
@@ -40,6 +40,7 @@ for (const theme of ['light', 'dark'] as const) {
       // The Recent list labels the playing book's dot, as the reader's chapter lists do (books#35)
       await page.getByRole('button', { name: /^Recent/ }).click()
       await expect(page.locator('#player-panel').getByRole('img', { name: 'Playing' })).toBeVisible()
+      await clean(page, 'reader Recent list')
       await page.getByRole('button', { name: /^Chapters/ }).click()
       await page.getByRole('button', { name: 'Sleep timer' }).click()
       await expect(page.getByRole('menu')).toBeVisible()

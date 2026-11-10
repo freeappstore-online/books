@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { CATALOG } from '../../src/data/catalog'
 import {
   VOICE, chapterSeconds, hasTimings, isNarrated, parseManifest, preparedCount, preparedTimingsUrl, preparedTitleUrl,
   preparedUrl, titleSeconds, type PreparedManifest,
@@ -49,6 +50,21 @@ describe('preparedAudio', () => {
 })
 
 describe('manifest contract (books#37)', () => {
+  it('rejects old narration after restoring a text, including an offline manifest', () => {
+    const book = CATALOG.find(b => b.id === 'as-i-lay-dying')!
+    // This book's complete text must not reuse the ten excerpt recordings.
+    expect(book.narrationRevision).toBeTruthy()
+    const raw = { [VOICE]: { [book.id]: [300], [SLUG]: [10] } }
+    expect(parseManifest(raw).manifest[VOICE][book.id]).toBeUndefined()
+    expect(parseManifest(raw).manifest[VOICE][SLUG]).toEqual([10])
+    expect(raw[VOICE][book.id]).toEqual([300])
+    const revised = { ...raw, extras: { [VOICE]: { [book.id]: { textRevision: book.narrationRevision } } } }
+    expect(parseManifest(revised).manifest[VOICE][book.id]).toEqual([300])
+    expect(preparedUrl(book.id, 0)).toContain(`/${book.id}/${book.narrationRevision}/0.m4a`)
+    expect(preparedTitleUrl(book.id, 0)).toContain(`/${book.id}/${book.narrationRevision}/0.title.m4a`)
+    expect(preparedTimingsUrl(book.id, 0)).toContain(`/${book.id}/${book.narrationRevision}/0.timings.json`)
+  })
+
   const raw = {
     [VOICE]: { [SLUG]: [10, null, 12], emma: [5] },
     extras: { [VOICE]: { [SLUG]: { timings: true, titles: [2.1, null, 1.8] }, emma: { titles: [1] } } },

@@ -125,12 +125,12 @@ export function AudioPlayer() {
                     onClick={() => switchToBook(h.slug)}
                     aria-current={book.slug === h.slug ? 'true' : undefined}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center justify-between gap-2 ${
-                      book.slug === h.slug ? 'bg-accent/15 text-accent' : 'text-text-muted hover:bg-surface-hover hover:text-text'
+                      book.slug === h.slug ? 'bg-accent-soft text-text' : 'text-text-muted hover:bg-surface-hover hover:text-text'
                     }`}
                   >
                     <div className="min-w-0">
                       <div className="font-medium truncate text-sm">{h.title}</div>
-                      <div className="text-xs text-text-dim">{h.author} · Ch {h.chapterIdx + 1}</div>
+                      <div className="text-xs text-text-muted">{h.author} · Ch {h.chapterIdx + 1}</div>
                     </div>
                     {book.slug === h.slug && playing && (
                       <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
