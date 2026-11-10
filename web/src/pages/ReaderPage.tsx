@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { useAudioPlayer, type AudioChapter } from '../hooks/useAudioPlayer'
+import { useAudioPlayer, type AudioBook, type AudioChapter } from '../hooks/useAudioPlayer'
 import { NavBar } from '../components/NavBar'
 import { PlayButton } from '../components/PlayButton'
 import { SaveOfflineButton, SaveOfflineError } from '../components/SaveOfflineButton'
@@ -21,29 +21,31 @@ import { useReaderFontSize } from '../hooks/usePreferences'
 import { TextSizeControls } from '../components/TextSizeControls'
 import { saveProgress, getProgress, setFinished, useFinished } from '../hooks/useReadingProgress'
 import { TimeLeft } from '../components/TimeLeft'
-import { getTheme, setTheme, THEME_STYLES, type Theme } from '../hooks/useTheme'
+import { getTheme, setTheme, type Theme } from '../hooks/useTheme'
 import { CATALOG } from '../data/catalog'
 import { BookNotFound } from '../components/BookNotFound'
 import { chapterSeconds, isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
+
+/** Chapter offset of the text at screen point (x, y), or null when it isn't in `container`. */
+function offsetAtPoint(container: HTMLElement, x: number, y: number): number | null {
+  // caretPositionFromPoint is the standard (Firefox has only this one); WebKit has caretRangeFromPoint
+  const pos = document.caretPositionFromPoint?.(x, y)
+  const range = pos ? null : document.caretRangeFromPoint?.(x, y)
+  const node = pos?.offsetNode ?? range?.startContainer
+  return node && container.contains(node) ? textOffset(container, node, pos?.offset ?? range?.startOffset ?? 0) : null
+}
 
 /** Chapter offset of the first text on screen, for a bookmark of the reading position. */
 function firstVisibleOffset(container: HTMLElement): number {
   const rect = container.getBoundingClientRect()
   const inset = topInset()
   if (rect.top >= inset) return 0
-  const x = rect.left + 1
-  const y = Math.min(inset + 16, rect.bottom - 1)
-  const pos = document.caretPositionFromPoint?.(x, y)
-  const range = pos ? null : document.caretRangeFromPoint?.(x, y)
-  const node = pos?.offsetNode ?? range?.startContainer
-  return node && container.contains(node) ? textOffset(container, node, pos?.offset ?? range?.startOffset ?? 0) : 0
+  return offsetAtPoint(container, rect.left + 1, Math.min(inset + 16, rect.bottom - 1)) ?? 0
 }
 
 export function ReaderPage() {
   const { slug } = useParams<{ slug: string }>()
-  const [bookTitle, setBookTitle] = useState('')
-  const [bookGenre, setBookGenre] = useState('')
-  const [bookAuthor, setBookAuthor] = useState('')
+  const catalogBook = CATALOG.find(b => b.id === slug)
   const [chapters, setChapters] = useState<AudioChapter[]>([])
   const [activeChapter, setActiveChapter] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,7 +56,6 @@ export function ReaderPage() {
   const [moreOpen, setMoreOpen] = useState(false)
   const textButtonRef = useRef<HTMLButtonElement>(null)
   const [theme, setThemeState] = useState<Theme>(getTheme)
-  const themeStyle = THEME_STYLES[theme]
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchHit, setSearchHit] = useState<SearchHit | null>(null)
   // Chapter offset to scroll to once the chapter shows (search, bookmarks)
@@ -172,11 +173,6 @@ export function ReaderPage() {
   async function loadFromCatalog(bookSlug: string) {
     const catalogBook = CATALOG.find(b => b.id === bookSlug)
     if (!catalogBook) return
-
-    setBookTitle(catalogBook.title)
-    setBookGenre(catalogBook.genre)
-    setBookAuthor(catalogBook.author)
-
     try {
       // A book saved for offline opens from this device (books#7)
       const chaptersList = await fetchChapters(catalogBook.contentPath)
@@ -220,6 +216,10 @@ export function ReaderPage() {
   const listenOffline = Boolean(slug && manifest && !online && !narrated && isNarrated(manifest, slug))
   // A partly narrated book plays only its narrated chapters (books#31)
   const chapterNarrated = Boolean(narrated && chapterSeconds(manifest!, slug!, visibleChapterIdx) !== null)
+  const audioBook = useMemo<AudioBook | null>(
+    () => (slug && catalogBook ? { slug, title: catalogBook.title, author: catalogBook.author, chapters } : null),
+    [slug, catalogBook, chapters],
+  )
 
   const handleTextClick = useCallback((e: React.MouseEvent) => {
     if (!slug || !currentChapter) return
@@ -234,17 +234,10 @@ export function ReaderPage() {
     }
     if (!chapterNarrated) return
 
-    const container = e.currentTarget as HTMLElement
-    // caretPositionFromPoint is the standard (Firefox has only this one); WebKit has caretRangeFromPoint
-    const pos = document.caretPositionFromPoint?.(e.clientX, e.clientY)
-    const range = pos ? null : document.caretRangeFromPoint?.(e.clientX, e.clientY)
-    const caretNode = pos?.offsetNode ?? range?.startContainer
-    const caretOffset = pos?.offset ?? range?.startOffset ?? 0
-    if (!caretNode || !container.contains(caretNode)) return
-
+    const offset = offsetAtPoint(e.currentTarget as HTMLElement, e.clientX, e.clientY)
     // Listen from the clicked word (seeks there when this chapter is playing)
-    player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, visibleChapterIdx, textOffset(container, caretNode, caretOffset))
-  }, [slug, currentChapter, chapterNarrated, player, bookTitle, bookAuthor, chapters, visibleChapterIdx, annotations])
+    if (audioBook && offset !== null) player.loadAndPlay(audioBook, visibleChapterIdx, offset)
+  }, [slug, currentChapter, chapterNarrated, player, audioBook, visibleChapterIdx, annotations])
 
   /** Show chapter `chapterIdx` scrolled to char `offset`. */
   const jumpTo = useCallback((chapterIdx: number, offset: number) => {
@@ -370,16 +363,14 @@ export function ReaderPage() {
     setNotesOpen(false)
     jumpTo(a.chapterIdx, a.start)
     // Listening: the narration goes there too
-    if (slug && isThisBookPlaying && player.playing) {
-      player.loadAndPlay({ slug, title: bookTitle, author: bookAuthor, chapters }, a.chapterIdx, a.start)
-    }
+    if (audioBook && isThisBookPlaying && player.playing) player.loadAndPlay(audioBook, a.chapterIdx, a.start)
   }
 
   if (loading) {
     return <div className="min-h-dvh bg-page text-text flex items-center justify-center">Loading...</div>
   }
 
-  if (!bookTitle) return <BookNotFound />
+  if (!catalogBook) return <BookNotFound />
 
   return (
     <div className="min-h-dvh bg-page text-text">
@@ -389,8 +380,8 @@ export function ReaderPage() {
           Below the status bar/notch in the installed iPhone app. */}
       <div data-reader-top="" className="sticky top-[calc(env(safe-area-inset-top)-3.125rem)] md:top-[calc(env(safe-area-inset-top)-3.25rem)] lg:top-[env(safe-area-inset-top)] z-30 bg-page">
         <NavBar
-          title={bookTitle}
-          subtitle={bookAuthor ? `${bookAuthor} · ${bookGenre}` : bookGenre}
+          title={catalogBook.title}
+          subtitle={catalogBook.author ? `${catalogBook.author} · ${catalogBook.genre}` : catalogBook.genre}
           actions={<>
             <button
               onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
@@ -468,13 +459,7 @@ export function ReaderPage() {
                 <option value="sepia">Sepia</option>
               </select>
             </div>
-            <PlayButton
-              slug={slug || ''}
-              bookTitle={bookTitle}
-              bookAuthor={bookAuthor}
-              chapters={chapters}
-              activeChapterIdx={visibleChapterIdx}
-            />
+            {audioBook && <PlayButton book={audioBook} chapterIdx={visibleChapterIdx} />}
           </>}
         />
 
@@ -494,7 +479,7 @@ export function ReaderPage() {
                 </button>
                 {annotations.length > 0 && (
                   <button
-                    onClick={() => downloadMarkdown(`${slug}-notes.md`, annotationsMarkdown(bookTitle, bookAuthor, chapters.map(c => c.title), annotations))}
+                    onClick={() => downloadMarkdown(`${slug}-notes.md`, annotationsMarkdown(catalogBook.title, catalogBook.author, chapters.map(c => c.title), annotations))}
                     className="px-3 py-1.5 rounded-lg text-sm border border-border text-text-muted hover:text-text transition"
                   >
                     Export Markdown
@@ -528,7 +513,7 @@ export function ReaderPage() {
                     activeChapter === ch.id ? 'bg-surface-hover text-text' : 'text-text-muted'
                   }`}
                 >
-                  {isThisBookPlaying && playingChapterIdx === i && player.playing && (
+                  {playingChapterIdx === i && player.playing && (
                     <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
                   )}
                   <span className="truncate">{ch.title}</span>
@@ -568,7 +553,7 @@ export function ReaderPage() {
                   activeChapter === ch.id ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text hover:bg-surface'
                 }`}
               >
-                {isThisBookPlaying && playingChapterIdx === i && player.playing && (
+                {playingChapterIdx === i && player.playing && (
                   <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
                 )}
                 <span className="truncate">{ch.title}</span>
@@ -578,7 +563,7 @@ export function ReaderPage() {
         </aside>
 
         {/* Content */}
-        <main className={`${themeStyle.bg} ${themeStyle.text} rounded-xl p-4 md:p-8 transition-colors`}>
+        <main className={`bg-page text-text rounded-xl p-4 md:p-8 transition-colors`}>
           {currentChapter ? (
             <article ref={articleRef}>
               <h2 className="font-display mb-1" style={{ fontSize: `${Math.round(fontSize * 1.35)}px` }}>{currentChapter.title}</h2>
@@ -587,7 +572,7 @@ export function ReaderPage() {
                 content={currentChapter.content}
                 chapterIdx={visibleChapterIdx}
                 active={isThisBookPlaying && player.playing}
-                className={`${themeStyle.muted} whitespace-pre-wrap ${chapterNarrated ? 'cursor-pointer' : ''}`}
+                className={`text-text-muted whitespace-pre-wrap ${chapterNarrated ? 'cursor-pointer' : ''}`}
                 style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
                 onClick={handleTextClick}
                 title={chapterNarrated ? 'Click to start listening from here' : undefined}
@@ -596,37 +581,30 @@ export function ReaderPage() {
               />
 
               <div className="flex justify-between mt-8 md:mt-12 pt-4 md:pt-6 border-t border-border">
-                {(() => {
-                  const idx = chapters.findIndex(c => c.id === activeChapter)
-                  return (
-                    <>
-                      {idx > 0 ? (
-                        <button
-                          onClick={() => { setActiveChapter(chapters[idx - 1].id); window.scrollTo(0, 0) }}
-                          className="text-text-muted hover:text-text transition text-sm max-w-[45%] truncate"
-                        >
-                          &larr; {chapters[idx - 1].title}
-                        </button>
-                      ) : <span />}
-                      {idx < chapters.length - 1 ? (
-                        <button
-                          onClick={() => { setActiveChapter(chapters[idx + 1].id); window.scrollTo(0, 0) }}
-                          className="text-text-muted hover:text-text transition text-sm max-w-[45%] truncate text-right"
-                        >
-                          {chapters[idx + 1].title} &rarr;
-                        </button>
-                      ) : slug && chapters.length > 1 ? (
-                        <button
-                          onClick={() => setFinished(slug, !finished[slug])}
-                          aria-pressed={Boolean(finished[slug])}
-                          className={`text-sm font-semibold transition ${finished[slug] ? 'text-success' : 'text-accent hover:text-accent-hover'}`}
-                        >
-                          {finished[slug] ? '✓ Finished' : 'Mark as finished'}
-                        </button>
-                      ) : <span />}
-                    </>
-                  )
-                })()}
+                {visibleChapterIdx > 0 ? (
+                  <button
+                    onClick={() => { setActiveChapter(chapters[visibleChapterIdx - 1].id); window.scrollTo(0, 0) }}
+                    className="text-text-muted hover:text-text transition text-sm max-w-[45%] truncate"
+                  >
+                    &larr; {chapters[visibleChapterIdx - 1].title}
+                  </button>
+                ) : <span />}
+                {visibleChapterIdx < chapters.length - 1 ? (
+                  <button
+                    onClick={() => { setActiveChapter(chapters[visibleChapterIdx + 1].id); window.scrollTo(0, 0) }}
+                    className="text-text-muted hover:text-text transition text-sm max-w-[45%] truncate text-right"
+                  >
+                    {chapters[visibleChapterIdx + 1].title} &rarr;
+                  </button>
+                ) : slug && chapters.length > 1 ? (
+                  <button
+                    onClick={() => setFinished(slug, !finished[slug])}
+                    aria-pressed={Boolean(finished[slug])}
+                    className={`text-sm font-semibold transition ${finished[slug] ? 'text-success' : 'text-accent hover:text-accent-hover'}`}
+                  >
+                    {finished[slug] ? '✓ Finished' : 'Mark as finished'}
+                  </button>
+                ) : <span />}
               </div>
             </article>
           ) : (

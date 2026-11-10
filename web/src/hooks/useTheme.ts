@@ -23,12 +23,3 @@ export function applyTheme(theme: Theme) {
   const paper = getComputedStyle(root).getPropertyValue('--paper').trim()
   document.getElementById('theme-color')?.setAttribute('content', paper)
 }
-
-// Colours come from the [data-theme] tokens in index.css, so every theme uses the same utilities.
-const TOKENS = { bg: 'bg-page', text: 'text-text', muted: 'text-text-muted', surface: 'bg-surface' }
-
-export const THEME_STYLES: Record<Theme, { bg: string; text: string; muted: string; surface: string; label: string }> = {
-  dark: { ...TOKENS, label: 'Dark' },
-  light: { ...TOKENS, label: 'Light' },
-  sepia: { ...TOKENS, label: 'Sepia' },
-}
