@@ -171,13 +171,7 @@ export function CatalogPage() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
             {audiobooks.map(({ book, narratedChapters }) => (
-              <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
-                <BookCover book={book} size="lg" />
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
-                  <AudiobookPill narrated={narratedChapters} chapters={book.chapters} />
-                </div>
-              </Link>
+              <ShelfBook key={book.id} book={book} narrated={narratedChapters} className={dim(book.id)} />
             ))}
           </div>
         </section>
@@ -187,14 +181,8 @@ export function CatalogPage() {
         <section className="px-4 md:px-6 pb-10 md:pb-12 max-w-6xl mx-auto">
           <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4 md:mb-6">Featured</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {featured.map(({ book, narrated, narratedChapters }) => (
-              <Link key={book.id} to={`/read/${book.id}`} className={`group ${dim(book.id)}`}>
-                <BookCover book={book} size="lg" />
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
-                  {narrated && <AudiobookPill narrated={narratedChapters} chapters={book.chapters} />}
-                </div>
-              </Link>
+            {featured.map(({ book, narratedChapters }) => (
+              <ShelfBook key={book.id} book={book} narrated={narratedChapters} className={dim(book.id)} />
             ))}
           </div>
         </section>
@@ -226,6 +214,19 @@ export function CatalogPage() {
         </a>
       </footer>
     </div>
+  )
+}
+
+/** A cover on the Audiobooks or Featured shelf. */
+function ShelfBook({ book, narrated, className }: { book: CatalogBook; narrated: number; className: string }) {
+  return (
+    <Link to={`/read/${book.id}`} className={`group ${className}`}>
+      <BookCover book={book} size="lg" />
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
+        {narrated > 0 && <AudiobookPill narrated={narrated} chapters={book.chapters} />}
+      </div>
+    </Link>
   )
 }
 
