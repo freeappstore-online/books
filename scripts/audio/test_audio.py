@@ -113,7 +113,8 @@ class Encoding(unittest.TestCase):
             y = np.frombuffer(subprocess.run(["ffmpeg", "-loglevel", "error", "-i", f"{d}/out.m4a", "-f", "f32le",
                                               "-ac", "1", "-ar", str(sr), "-"], capture_output=True, check=True).stdout,
                               np.float32)
-            self.assertEqual(len(y), len(x))
+            # ffmpeg 9 trims the encoder's end padding when decoding; 6.1 (Ubuntu 24.04) keeps up to a frame
+            self.assertTrue(0 <= len(y) - len(x) < 1024, (len(y), len(x)))
             # the first burst starts where it did: compare the envelopes' onsets
             onset = lambda a: int(np.argmax(np.abs(a) > 0.5 * np.abs(a[: sr // 2]).max()))
             self.assertLessEqual(abs(onset(y) - onset(x)), 24)  # 1 ms
