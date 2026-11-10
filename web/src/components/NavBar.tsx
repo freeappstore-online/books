@@ -14,6 +14,9 @@ export function NavBar({ title, subtitle, actions }: Props) {
   const location = useLocation()
 
   const isHome = location.pathname === '/'
+  const pageTitle = isHome ? 'Books' : location.pathname === '/library' ? 'My books'
+    : location.pathname === '/settings' ? 'Settings' : null
+  const showTitle = Boolean(title && title !== pageTitle)
   const online = useOnline()
 
   return (
@@ -22,21 +25,14 @@ export function NavBar({ title, subtitle, actions }: Props) {
       <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-3 gap-y-2">
         {/* Left: logo/back + nav links */}
         {/* Only a title may shrink (it truncates): without one the logo would slide under the Offline badge */}
-        <div className={`flex flex-1 items-center gap-3 md:gap-5 ${title ? 'min-w-0' : 'min-w-fit'}`}>
+        <div className={`flex flex-1 items-center gap-3 md:gap-5 ${showTitle ? 'min-w-0' : 'min-w-fit'}`}>
           {/* Logo — always visible, always links home */}
-          <Link to="/" className="text-lg md:text-xl font-display hover:text-accent transition shrink-0">
+          <Link to="/" aria-current={isHome ? 'page' : undefined} className="text-lg md:text-xl font-display hover:text-accent transition shrink-0">
             Books
           </Link>
 
           {/* Nav links — desktop only */}
           <nav aria-label="Main" className="hidden md:flex items-center gap-4 text-sm whitespace-nowrap">
-            <Link
-              to="/"
-              aria-current={isHome ? 'page' : undefined}
-              className={`transition ${isHome ? 'text-text font-medium' : 'text-text-muted hover:text-text'}`}
-            >
-              Books
-            </Link>
             <Link
               to="/library"
               aria-current={location.pathname === '/library' ? 'page' : undefined}
@@ -54,7 +50,9 @@ export function NavBar({ title, subtitle, actions }: Props) {
           </nav>
 
           {/* Page title (reader, book editor, etc) */}
-          {title && (
+          {/* Mobile navigation uses icons, so its page name remains visible. */}
+          {title && !showTitle && <h1 className="text-sm font-medium md:sr-only">{title}</h1>}
+          {showTitle && (
             <>
               <span className="text-text-dim hidden md:inline">/</span>
               <div className="min-w-0">
@@ -80,15 +78,6 @@ export function NavBar({ title, subtitle, actions }: Props) {
 
         {/* Mobile nav icons */}
         <nav aria-label="Main" className="flex md:hidden items-center shrink-0">
-          <Link
-            to="/"
-            className={`w-10 h-10 flex items-center justify-center rounded-lg transition ${isHome ? 'text-text' : 'text-text-dim hover:text-text-muted'}`}
-            title="Books"
-            aria-label="Books"
-            aria-current={isHome ? 'page' : undefined}
-          >
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-          </Link>
           <Link
             to="/library"
             className={`w-10 h-10 flex items-center justify-center rounded-lg transition ${location.pathname === '/library' ? 'text-text' : 'text-text-dim hover:text-text-muted'}`}
