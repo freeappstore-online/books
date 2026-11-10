@@ -118,10 +118,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   // the halted chapter are ignored.
   const genRef = useRef(0)
   const narrationRef = useRef<Narration | null>(null)
+  const pendingNarrationRef = useRef<AbortController | null>(null)
   // The chapter playing, for read-along and seeking to a word (timings undefined while loading)
   const trackRef = useRef<{ audio: HTMLAudioElement; idx: number; text: string; timings?: TimingSegment[] | null } | null>(null)
 
-  useEffect(() => () => { narrationRef.current?.stop() }, [])
+  useEffect(() => () => { pendingNarrationRef.current?.abort(); narrationRef.current?.stop() }, [])
 
   // One tab plays at a time: playing in another tab (or the installed app) pauses this one
   const channelRef = useRef<BroadcastChannel | null>(null)
@@ -152,6 +153,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   /** Stop the audio and invalidate its pending callbacks; returns the new generation. */
   const halt = useCallback(() => {
     const gen = ++genRef.current
+    pendingNarrationRef.current?.abort()
+    pendingNarrationRef.current = null
     narrationRef.current?.stop()
     narrationRef.current = null
     setLoading(false)
@@ -191,6 +194,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const b = bookRef.current
     if (!b || start < 0 || start >= b.chapters.length) return
     const gen = halt()
+    const controller = new AbortController()
+    pendingNarrationRef.current = controller
     // Synchronously, while this is still the user's click (iOS)
     primeNarration()
     setPlaying(true)
@@ -239,7 +244,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         // Headphones unplugged, a call, another app: the browser paused it
         onPaused: () => { if (gen === genRef.current) { halt(); setPlaying(false) } },
         onError: fail,
-      })
+      }, controller.signal)
       // Halted (pause, another chapter) while loading
       if (gen !== genRef.current) {
         narration.stop()
@@ -312,7 +317,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       track.audio.currentTime = timeForChar(track.text, track.timings, charOffset, track.audio.duration)
       return
     }
-    const idx = startChapter ?? loadPosition(newBook.slug)
+    // A revised catalogue can have fewer chapters than the saved position.
+    const idx = Math.min(Math.max(0, startChapter ?? loadPosition(newBook.slug)), newBook.chapters.length - 1)
     setBook(newBook)
     bookRef.current = newBook
     updateHistory(newBook, idx)

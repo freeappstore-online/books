@@ -1,3 +1,4 @@
+import { readLocalRecord, writeLocal } from './localStorage'
 /**
  * Bookmarks, highlights and notes (books#11), kept on this device per book.
  * Offsets are chapter text offsets, like the read-along and the search.
@@ -34,7 +35,8 @@ export interface Annotation {
 type Store = Record<string, Annotation[]>
 
 function load(): Store {
-  try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch { return {} }
+  const parsed = readLocalRecord<Annotation[]>(KEY)
+  return Object.fromEntries(Object.entries(parsed).filter(([, list]) => Array.isArray(list)))
 }
 
 let store: Store = load()
@@ -55,7 +57,7 @@ function update(slug: string, fn: (list: Annotation[]) => Annotation[]) {
   const list = fn(store[slug] ?? [])
   if (list.length) store[slug] = list
   else delete store[slug]
-  try { localStorage.setItem(KEY, JSON.stringify(store)) } catch {}
+  try { writeLocal(KEY, JSON.stringify(store)) } catch {}
   for (const listener of listeners) listener()
 }
 

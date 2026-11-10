@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getNarrationTime, seekNarration } from '../../src/hooks/narration'
-import { loadPosition, savePosition, saveHistory, loadHistory } from '../../src/hooks/audioStorage'
+import { loadPosition, savePosition, saveHistory, loadHistory, loadRate, loadSleepChoice } from '../../src/hooks/audioStorage'
 
 // Where each chapter was stopped (narration.ts) and which chapter each book is on (audioStorage.ts).
 // No <audio> in Node, so these run the "not playing" paths: seeking saves the position for later.
@@ -33,6 +33,13 @@ describe('narration position in a chapter', () => {
     localStorage.setItem('bp-prepared-positions', 'oops')
     expect(getNarrationTime(URL0)).toBe(0)
   })
+
+  it.each(['null', '[]', '42', JSON.stringify({ [URL0]: -10 }), JSON.stringify({ [URL0]: '200' })])('ignores malformed saved seconds: %s', raw => {
+    localStorage.setItem('bp-prepared-positions', raw)
+    expect(getNarrationTime(URL0)).toBe(0)
+    seekNarration(URL0, 20, 600)
+    expect(getNarrationTime(URL0)).toBe(20)
+  })
 })
 
 describe('chapter each book is on', () => {
@@ -51,5 +58,32 @@ describe('chapter each book is on', () => {
   it('reads the { chapterIdx, charOffset } format of older versions', () => {
     localStorage.setItem('bp-audio-position', JSON.stringify({ 'alice-in-wonderland': { chapterIdx: 3, charOffset: 120 } }))
     expect(loadPosition('alice-in-wonderland')).toBe(3)
+  })
+
+  it.each([-2, 1.5, '3', null])('ignores invalid chapter positions: %s', value => {
+    localStorage.setItem('bp-audio-position', JSON.stringify({ alice: value }))
+    expect(loadPosition('alice')).toBe(0)
+  })
+
+  it.each(['null', '[]', '42'])('can save a new chapter after a malformed position index: %s', value => {
+    localStorage.setItem('bp-audio-position', value)
+    savePosition('alice', 4)
+    expect(loadPosition('alice')).toBe(4)
+  })
+})
+
+describe('damaged player settings', () => {
+  it.each(['null', '{}', '[null, {"slug":"alice"}]'])('ignores malformed history: %s', raw => {
+    localStorage.setItem('bp-audio-history', raw)
+    expect(loadHistory()).toEqual([])
+  })
+
+  it.each(['Infinity', '-1', '9', 'not a number'])('uses safe defaults for invalid playback settings: %s', raw => {
+    localStorage.setItem('bp-audio-rate', raw)
+    expect(loadRate()).toBe(1)
+    if (raw !== '9') {
+      localStorage.setItem('bp-audio-sleep', raw)
+      expect(loadSleepChoice()).toBeNull()
+    }
   })
 })

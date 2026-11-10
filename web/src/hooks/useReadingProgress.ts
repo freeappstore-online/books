@@ -1,3 +1,4 @@
+import { readLocalRecord, writeLocal } from './localStorage'
 import { useSyncExternalStore } from 'react'
 import { loadPosition, type HistoryEntry } from './audioStorage'
 import { getNarrationTime } from './narration'
@@ -17,7 +18,11 @@ interface ReadingProgress {
 }
 
 function loadAll(): Record<string, ReadingProgress> {
-  try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch { return {} }
+  const parsed = readLocalRecord<ReadingProgress>(KEY)
+  return Object.fromEntries(Object.entries(parsed).filter(([, p]) => p
+    && Number.isInteger(p.chapterIdx) && p.chapterIdx >= 0
+    && Number.isInteger(p.totalChapters) && p.totalChapters > 0
+    && Number.isFinite(p.lastRead)))
 }
 
 export function getProgress(slug: string): ReadingProgress | null {
@@ -27,12 +32,13 @@ export function getProgress(slug: string): ReadingProgress | null {
 export function saveProgress(slug: string, chapterIdx: number, totalChapters: number, scroll = 0, fraction?: number) {
   const all = loadAll()
   all[slug] = { chapterIdx, totalChapters, scroll, fraction, lastRead: Date.now() }
-  try { localStorage.setItem(KEY, JSON.stringify(all)) } catch {}
+  try { writeLocal(KEY, JSON.stringify(all)) } catch {}
 }
 
 // ── Finished books: slug → when it was marked finished ──
 function loadFinished(): Record<string, number> {
-  try { return JSON.parse(localStorage.getItem(FINISHED_KEY) || '{}') } catch { return {} }
+  const parsed = readLocalRecord<number>(FINISHED_KEY)
+  return Object.fromEntries(Object.entries(parsed).filter(([, n]) => typeof n === 'number' && Number.isFinite(n)))
 }
 
 let finished = loadFinished()
@@ -52,7 +58,7 @@ export function setFinished(slug: string, done: boolean) {
   finished = loadFinished()
   if (done) finished[slug] = Date.now()
   else delete finished[slug]
-  try { localStorage.setItem(FINISHED_KEY, JSON.stringify(finished)) } catch {}
+  try { writeLocal(FINISHED_KEY, JSON.stringify(finished)) } catch {}
   for (const listener of finishedListeners) listener()
 }
 

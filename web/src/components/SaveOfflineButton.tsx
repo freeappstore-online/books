@@ -19,7 +19,7 @@ export function SaveOfflineButton({ slug }: { slug: string }) {
   useEffect(() => {
     if (saving === wasSaving.current) return
     wasSaving.current = saving
-    setStatus(saving ? 'Saving for offline' : saved[slug] ? 'Saved for offline' : errors[slug] ? 'Saving failed' : 'Saving cancelled')
+    setStatus(saving ? 'Saving for offline' : errors[slug] ? 'Saving failed' : saved[slug] ? 'Saved for offline' : 'Saving cancelled')
   }, [saving, saved, errors, slug])
 
   return (
@@ -57,6 +57,9 @@ function SaveOfflineControl({ slug }: { slug: string }) {
 
   if (book) {
     const reason = updateReason(slug, book, manifest)
+    if (reason === 'missing downloads' && !online) {
+      return <span className="text-xs text-warning">Offline copy incomplete — reconnect to repair</span>
+    }
     if (reason && online) {
       return (
         <button
@@ -83,7 +86,7 @@ function SaveOfflineControl({ slug }: { slug: string }) {
   const estimate = estimateAudioBytes(manifest, slug, VOICE)
   return (
     <button
-      onClick={() => saveBook(slug, VOICE)}
+      onClick={() => saveBook(slug, narrated > 0 ? VOICE : null)}
       className="min-h-10 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-hover text-text-muted hover:text-accent transition"
       title={narrated > 0 ? `Download the text and narration (~${formatBytes(estimate)}) to read and listen offline` : 'Download the text to read offline'}
     >

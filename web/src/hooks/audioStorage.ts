@@ -1,3 +1,4 @@
+import { readLocal, readLocalRecord, writeLocal } from './localStorage'
 /**
  * Audio player persistence — all localStorage operations in one place.
  * Each function has its own try/catch so callers never crash on storage errors.
@@ -11,21 +12,25 @@ const SLEEP_KEY = 'bp-audio-sleep'
 
 // ── Rate ──
 export function loadRate(): number {
-  try { return Number(localStorage.getItem(RATE_KEY)) || 1 } catch { return 1 }
+  try {
+    const rate = Number(readLocal(RATE_KEY))
+    return Number.isFinite(rate) && rate >= 0.5 && rate <= 3 ? rate : 1
+  } catch { return 1 }
 }
 export function saveRate(r: number) {
-  try { localStorage.setItem(RATE_KEY, String(r)) } catch {}
+  try { writeLocal(RATE_KEY, String(r)) } catch {}
 }
 
 // ── Sleep timer: last choice, minutes or end of chapter ──
 export function loadSleepChoice(): number | 'chapter' | null {
   try {
-    const v = localStorage.getItem(SLEEP_KEY)
-    return v === 'chapter' ? v : Number(v) || null
+    const v = readLocal(SLEEP_KEY)
+    const minutes = Number(v)
+    return v === 'chapter' ? v : Number.isFinite(minutes) && minutes > 0 ? minutes : null
   } catch { return null }
 }
 export function saveSleepChoice(c: number | 'chapter') {
-  try { localStorage.setItem(SLEEP_KEY, String(c)) } catch {}
+  try { writeLocal(SLEEP_KEY, String(c)) } catch {}
 }
 
 // ── History ──
@@ -38,38 +43,45 @@ export interface HistoryEntry {
 }
 
 export function loadHistory(): HistoryEntry[] {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
+  try {
+    const parsed = JSON.parse(readLocal(HISTORY_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed.filter(h => h
+      && typeof h.slug === 'string' && typeof h.title === 'string' && typeof h.author === 'string'
+      && Number.isInteger(h.chapterIdx) && h.chapterIdx >= 0
+      && typeof h.timestamp === 'number' && Number.isFinite(h.timestamp)).slice(0, 50) : []
+  } catch { return [] }
 }
 
 export function saveHistory(h: HistoryEntry[]) {
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, 50))) } catch {}
+  try { writeLocal(HISTORY_KEY, JSON.stringify(h.slice(0, 50))) } catch {}
 }
 
 // ── Position: the chapter each book was listened to last ──
 // (where in the chapter is kept by narration.ts)
 export function loadPosition(slug: string): number {
   try {
-    const val = JSON.parse(localStorage.getItem(POSITION_KEY) || '{}')[slug]
+    const val = readLocalRecord<number | { chapterIdx: number }>(POSITION_KEY)[slug]
     // Older versions stored { chapterIdx, charOffset }
-    return (typeof val === 'number' ? val : val?.chapterIdx) || 0
+    const idx = typeof val === 'number' ? val : val?.chapterIdx
+    return Number.isInteger(idx) && idx >= 0 ? idx : 0
   } catch { return 0 }
 }
 
 export function savePosition(slug: string, chapterIdx: number) {
   try {
-    const positions = JSON.parse(localStorage.getItem(POSITION_KEY) || '{}')
+    const positions = readLocalRecord<number | { chapterIdx: number }>(POSITION_KEY)
     positions[slug] = chapterIdx
-    localStorage.setItem(POSITION_KEY, JSON.stringify(positions))
+    writeLocal(POSITION_KEY, JSON.stringify(positions))
   } catch {}
 
   // Also update the history entry so My books shows the current chapter
   try {
-    const history: HistoryEntry[] = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
+    const history = loadHistory()
     const entry = history.find(h => h.slug === slug)
     if (entry) {
       entry.chapterIdx = chapterIdx
       entry.timestamp = Date.now()
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history))
+      writeLocal(HISTORY_KEY, JSON.stringify(history))
     }
   } catch {}
 }

@@ -1,3 +1,4 @@
+import { readLocal, writeLocal } from './localStorage'
 /**
  * Plays the prepared narration (books#4, #23): one chapter at a time through
  * one shared <audio> element, from the saved copy when the book is kept
@@ -10,13 +11,17 @@ import { savedResponse } from './offlineBooks'
 /** Where each chapter was stopped (seconds by URL), kept across reloads. */
 const POSITIONS_KEY = 'bp-prepared-positions'
 function loadPositions(): Record<string, number> {
-  try { return JSON.parse(localStorage.getItem(POSITIONS_KEY) || '{}') } catch { return {} }
+  try {
+    const parsed = JSON.parse(readLocal(POSITIONS_KEY) || '{}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter(([, n]) => typeof n === 'number' && Number.isFinite(n) && n >= 0)) as Record<string, number>
+  } catch { return {} }
 }
 function savePosition(url: string, seconds: number | null) {
   const positions = loadPositions()
   if (seconds === null || seconds < 1) delete positions[url]
   else positions[url] = seconds
-  try { localStorage.setItem(POSITIONS_KEY, JSON.stringify(positions)) } catch {}
+  try { writeLocal(POSITIONS_KEY, JSON.stringify(positions)) } catch {}
 }
 
 /**
@@ -131,7 +136,7 @@ export interface NarrationCallbacks {
 }
 
 /** Play a narrated chapter from where it was stopped. */
-export async function playNarration(slug: string, chapterIdx: number, rate: number, cb: NarrationCallbacks): Promise<Narration> {
+export async function playNarration(slug: string, chapterIdx: number, rate: number, cb: NarrationCallbacks, signal?: AbortSignal): Promise<Narration> {
   const url = preparedUrl(slug, chapterIdx)
   const a = audio!
   // Claim the element before awaiting: a later request must win even if this one's awaits finish last
@@ -140,7 +145,7 @@ export async function playNarration(slug: string, chapterIdx: number, rate: numb
   // A book saved for offline plays from this device (books#7)
   const saved = await savedResponse(url)
   const blob = saved ? await saved.blob() : null
-  if (!mine()) return { audio: a, stop() {}, setRate() {}, setVolume() {} }
+  if (!mine() || signal?.aborted) return { audio: a, stop() {}, setRate() {}, setVolume() {} }
   const src = blob ? URL.createObjectURL(blob) : url
 
   let stopped = false

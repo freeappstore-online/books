@@ -45,6 +45,16 @@ See [docs/adding-books.md](docs/adding-books.md): text from Project Gutenberg, t
 
 Push to main — auto-deploys to R2 via GitHub Actions.
 
+## Marketing catalogue
+
+The website at [books.freewebstore.online](https://books.freewebstore.online/) uses the same catalogue as the reader. After changing the catalogue, generate its crawlable HTML, filter script and metadata:
+
+```bash
+node scripts/marketing/generate.mjs /tmp/books-marketing
+```
+
+Through the FreeWebStore MCP session for Books, upload `catalog.html` with `update_section` (section `catalog`), `books.js` with `set_site_script`, and the fields in `meta.json` with `set_meta`. Update the hero's book count too. Preserve the section wrapper classes. Review desktop, mobile and JavaScript-disabled previews, dry-run `push_update`, then publish. The catalogue must contain its reader links in the HTML before JavaScript runs; the script enhances the cards and adds filtering. `scripts/marketing/help.html` is the website's offline and playback help section.
+
 ## License
 
 MIT

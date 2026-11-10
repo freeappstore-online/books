@@ -1,0 +1,40 @@
+<style>
+#bookGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.book-card{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:14px;border:1px solid #e5e7eb;background:#fff;color:#111827}
+.book-row{display:flex;gap:14px;align-items:flex-start}
+.book-info{min-width:0}
+.book-info h3{margin:6px 0 2px;font-family:'Playfair Display',serif;font-size:1.1rem;line-height:1.3}
+.book-info p{margin:0;color:#6b7280;font-size:.9rem}
+.book-cover{width:64px;height:96px;object-fit:cover;border-radius:6px;flex:none;box-shadow:0 2px 8px rgba(0,0,0,.18);background:#ede9fe}
+.book-cover--blank{background:linear-gradient(135deg,#6d28d9,#1e1b4b)}
+.course-pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:999px;background:#f3f4f6;color:#4b5563}
+.pill.lvl{background:#ede9fe;color:#5b21b6}
+.course-meta{display:flex;gap:14px;font-size:.82rem;color:#6b7280;margin-top:auto}
+.card-enroll{display:inline-block;padding:6px 14px;border-radius:8px;border:1px solid #d1d5db;font-weight:600;font-size:.88rem;color:#111827}
+.card-enroll:hover{background:#f9fafb}
+.book-card[data-audio=yes]{border-color:#a78bfa;box-shadow:0 0 0 1px #a78bfa}
+.book-card[data-audio=yes] .card-enroll{background:#6d28d9;border-color:#6d28d9;color:#fff}
+#book-filters .chip{padding:6px 14px;border-radius:999px;border:1px solid #d1d5db;background:#fff;color:#374151;font-size:.88rem;font-weight:500;cursor:pointer}
+#book-filters .chip.active{background:#6d28d9;border-color:#6d28d9;color:#fff}
+@media (prefers-color-scheme:dark){
+.book-card{background:#111827;border-color:#1f2937;color:#f3f4f6}
+.book-info p,.course-meta{color:#9ca3af}
+.pill{background:#1f2937;color:#d1d5db}.pill.lvl{background:rgba(124,58,237,.25);color:#ddd6fe}
+.card-enroll{border-color:#374151;color:#f3f4f6}.card-enroll:hover{background:#1f2937}
+#book-filters .chip{background:#111827;border-color:#374151;color:#e5e7eb}
+}
+#bookGrid{list-style:none;padding:0;margin:0}#bookGrid h3{margin:0;font-size:1.1rem}#bookGrid h3 a:hover{text-decoration:underline}#bookGrid>li>p{margin:0;color:#6b7280}@media(prefers-color-scheme:dark){#bookGrid>li>p{color:#9ca3af}}
+</style>
+<div class="max-w-6xl mx-auto">
+  <p class="text-sm font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-300">The full catalogue</p>
+  <h2 class="mt-2 text-3xl md:text-4xl font-bold text-gray-900 dark:text-white" style="font-family:'Playfair Display',serif">Every book in the library</h2>
+  <div class="mt-8 flex flex-col gap-4">
+    <input type="search" id="book-search" placeholder="Search by title, author or genre&hellip;" aria-label="Search books" class="w-full md:max-w-md rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-4 py-3">
+    <div class="flex flex-wrap gap-2" id="book-filters">{{FILTERS}}</div>
+  </div>
+  <p id="book-count" aria-live="polite" class="mt-6 mb-4 text-sm text-gray-500 dark:text-gray-400">{{BOOK_COUNT}} books</p>
+  <ul id="bookGrid" aria-label="Free classic books">{{BOOK_CARDS}}</ul>
+  <p id="bookEmpty" style="display:none" class="mt-6 text-gray-500 dark:text-gray-400">No books match. Try another search or filter.</p>
+</div>
+{{STRUCTURED_DATA}}

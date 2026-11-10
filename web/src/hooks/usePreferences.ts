@@ -1,3 +1,4 @@
+import { readLocal, writeLocal } from './localStorage'
 import { useEffect, useState } from 'react'
 
 const READER_FONT_KEY = 'bp-font-size'
@@ -13,13 +14,13 @@ const clamp = (v: number, { min, max }: { min: number; max: number }) => Math.mi
 
 function read(key: string, range: typeof BOOK_TEXT): number {
   try {
-    const v = Number(localStorage.getItem(key))
+    const v = Number(readLocal(key))
     return v ? clamp(v, range) : range.default
   } catch { return range.default }
 }
 
 function write(key: string, value: number) {
-  try { localStorage.setItem(key, String(value)) } catch {}
+  try { writeLocal(key, String(value)) } catch {}
   window.dispatchEvent(new Event(CHANGED_EVENT))
 }
 

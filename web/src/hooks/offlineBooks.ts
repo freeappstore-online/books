@@ -61,6 +61,8 @@ const jobs: Record<string, SaveJob> = {}
 const errors: Record<string, string> = {}
 /** Books whose text has changed on the server since they were saved */
 const textChanged: Record<string, boolean> = {}
+/** URLs the index still lists after the browser removed their cached files. */
+const missingFiles: Record<string, Set<string>> = {}
 
 function emit() {
   window.dispatchEvent(new CustomEvent(OFFLINE_CHANGED_EVENT))
@@ -77,14 +79,26 @@ function withLocks<T>(locks: [string, LockOptions][], fn: () => Promise<T>, sign
 }
 
 export function getSavedBooks(): Record<string, SavedBook> {
-  try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '{}') } catch { return {} }
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SAVED_KEY) || '{}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter(([, value]) => {
+      const b = value as SavedBook | null
+      return b && (b.voice === null || typeof b.voice === 'string')
+        && b.files && typeof b.files === 'object' && !Array.isArray(b.files)
+        && Object.values(b.files).every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)
+        && typeof b.savedAt === 'number' && Number.isFinite(b.savedAt)
+    })) as Record<string, SavedBook>
+  } catch { return {} }
 }
 
 function setSavedBook(slug: string, book: SavedBook | null) {
   const all = getSavedBooks()
   if (book) all[slug] = book
   else delete all[slug]
-  try { localStorage.setItem(SAVED_KEY, JSON.stringify(all)) } catch {}
+  // The file cache and this index are one save: a failed index write must fail
+  // the download too, otherwise it leaves files the app cannot manage or use.
+  localStorage.setItem(SAVED_KEY, JSON.stringify(all))
 }
 
 export function savedBytes(book: SavedBook): number {
@@ -157,7 +171,7 @@ export function saveBook(slug: string, voice: string | null) {
     const previous = getSavedBooks()[slug]
     const files: Record<string, number> = { ...previous?.files }
     let textVersion = previous?.textVersion
-    const cache = await caches.open(CACHE)
+    let cache: Cache
     let done = 0
     let total = 1
 
@@ -190,8 +204,14 @@ export function saveBook(slug: string, voice: string | null) {
     }
 
     try {
-      const manifestRes = await fetch(MANIFEST_URL, { signal })
-      const manifest: PreparedManifest = manifestRes.ok ? await manifestRes.clone().json() : {}
+      cache = await caches.open(CACHE)
+      // Browser storage can be evicted independently of the index. Never skip
+      // a file just because its URL is still recorded in localStorage.
+      for (const url of Object.keys(files)) if (!await cache.match(url)) delete files[url]
+      // Text-only saves do not depend on the availability of the audio host.
+      const manifestRes = voice ? await fetch(MANIFEST_URL, { signal }) : null
+      if (manifestRes && !manifestRes.ok) throw new Error(`Narration manifest: ${manifestRes.status}`)
+      const manifest: PreparedManifest = manifestRes ? await manifestRes.clone().json() : {}
       const durations = (voice && manifest[voice]?.[slug]) || []
       const narrated = durations.some(d => d != null)
       total = (voice && estimateAudioBytes(manifest, slug, voice)) || 1
@@ -205,7 +225,7 @@ export function saveBook(slug: string, voice: string | null) {
       // at catalogue size), so fetching it once is enough for it to show offline (books#8)
       const cover = coverUrl(slug)
       if (cover) await fetch(cover, { signal }).catch(() => {})
-      if (narrated) await cache.put(MANIFEST_URL, manifestRes)
+      if (narrated && manifestRes) await cache.put(MANIFEST_URL, manifestRes)
       for (let i = 0; i < durations.length; i++) {
         if (durations[i] == null) continue
         const audio = preparedUrl(slug, i, voice!)
@@ -217,17 +237,22 @@ export function saveBook(slug: string, voice: string | null) {
       }
       setSavedBook(slug, { voice: narrated ? voice : null, files, savedAt: Date.now(), format: SAVE_FORMAT, textVersion })
       delete textChanged[slug]
+      delete missingFiles[slug]
     } catch (err) {
-      if (previous) {
-        // An interrupted update keeps what it finished downloading
-        setSavedBook(slug, { ...previous, files })
-      } else {
-        await removeFiles(slug, Object.keys(files))
-      }
       if (!signal.aborted) {
         errors[slug] = isQuotaError(err)
           ? 'Not enough storage space on this device. Free up some space and try again.'
-          : 'The download failed. Check your connection and try again.'
+          : 'The download failed. Check your connection and device storage, then try again.'
+      }
+      if (previous) {
+        // An interrupted update keeps what it finished downloading
+        try { setSavedBook(slug, { ...previous, files }) } catch {
+          // If the index itself cannot be written, preserve its previous save
+          // and remove only the files the failed update added.
+          await removeFiles(Object.keys(files).filter(url => !(url in previous.files))).catch(() => {})
+        }
+      } else {
+        await removeFiles(Object.keys(files)).catch(() => {})
       }
     }
   }
@@ -240,11 +265,11 @@ export function saveBook(slug: string, voice: string | null) {
     })
 }
 
-async function removeFiles(slug: string, urls: string[]) {
+async function removeFiles(urls: string[]) {
   const cache = await caches.open(CACHE)
   await Promise.all(urls.map(url => cache.delete(url)))
-  const others = Object.entries(getSavedBooks()).filter(([s, b]) => s !== slug && b.voice)
-  if (others.length === 0) await cache.delete(MANIFEST_URL)
+  // A failed update can still have its original narrated save in the index.
+  if (!Object.values(getSavedBooks()).some(b => b.voice)) await cache.delete(MANIFEST_URL)
 }
 
 /**
@@ -254,11 +279,14 @@ async function removeFiles(slug: string, urls: string[]) {
 export function removeSavedBook(slug: string): Promise<void> {
   delete errors[slug]
   delete textChanged[slug]
+  delete missingFiles[slug]
   return withLocks([[FILES_LOCK, { mode: 'shared' }], [bookLock(slug), {}]], async () => {
     const saved = getSavedBooks()[slug]
     if (!saved) return
     setSavedBook(slug, null)
-    await removeFiles(slug, Object.keys(saved.files))
+    await removeFiles(Object.keys(saved.files))
+  }).catch(() => {
+    errors[slug] = 'Could not remove the saved book. Check device storage and try again.'
   }).finally(emit)
 }
 
@@ -271,7 +299,14 @@ if (typeof caches !== 'undefined' && navigator.locks) {
     const keep = new Set(books.flatMap(b => Object.keys(b.files)))
     if (books.some(b => b.voice)) keep.add(MANIFEST_URL)
     const cache = await caches.open(CACHE)
-    for (const req of await cache.keys()) if (!keep.has(req.url)) await cache.delete(req)
+    const requests = await cache.keys()
+    const available = new Set(requests.map(req => req.url))
+    for (const [slug, book] of Object.entries(getSavedBooks())) {
+      const missing = Object.keys(book.files).filter(url => !available.has(url))
+      if (missing.length) missingFiles[slug] = new Set(missing)
+    }
+    for (const req of requests) if (!keep.has(req.url)) await cache.delete(req)
+    if (Object.keys(missingFiles).length) emit()
   }).catch(() => {})
 }
 
@@ -296,6 +331,7 @@ export function checkSavedText(slug: string) {
 
 /** What Update would bring to a saved book, or null when it is up to date. */
 export function updateReason(slug: string, book: SavedBook, manifest: PreparedManifest): string | null {
+  if (missingFiles[slug]?.size) return 'missing downloads'
   const newChapters = book.voice ? preparedCount(manifest, slug, book.voice) - savedAudioChapters(book) : 0
   if (newChapters > 0) return `${newChapters} new chapter${newChapters === 1 ? '' : 's'}`
   if (textChanged[slug]) return 'updated text'
@@ -316,7 +352,10 @@ export function playableManifest(manifest: PreparedManifest, online = navigator.
     playable[voice] = {}
     for (const [slug, durations] of Object.entries(books)) {
       const files = saved[slug]?.files
-      if (files) playable[voice][slug] = durations.map((d, i) => (preparedUrl(slug, i, voice) in files ? d : null))
+      if (files) playable[voice][slug] = durations.map((d, i) => {
+        const url = preparedUrl(slug, i, voice)
+        return url in files && !missingFiles[slug]?.has(url) ? d : null
+      })
     }
   }
   return playable

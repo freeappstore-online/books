@@ -1,0 +1,50 @@
+var BOOKS={{BOOKS}};
+(function(){
+var APP='https://books.freeappstore.online';
+var GENRES=['Fiction','Non-Fiction','Drama','Poetry'];
+// Books with prepared narration (books.freeappstore.online manifest): slug -> length
+var AUDIO={'alice-in-wonderland':'2h 18min'};
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function yr(y){return y<0?(-y)+' BC':String(y)}
+function sortKey(t){return t.toLowerCase().replace(/^(the|a|an) /,'')}
+BOOKS.sort(function(a,b){var x=!AUDIO[a[0]],y=!AUDIO[b[0]];return x!==y?(x?1:-1):sortKey(a[1]).localeCompare(sortKey(b[1]))});
+function card(b){
+  var id=b[0],audio=AUDIO[id],g=GENRES[b[4]];
+  var cover=b[7]?'<img src="'+APP+'/covers/'+id+'.webp" alt="" loading="lazy" width="64" height="96" class="book-cover">':'<div class="book-cover book-cover--blank" aria-hidden="true"></div>';
+  var pills='<span class="pill cat">'+g+'</span>'+(audio?'<span class="pill lvl">&#9835; Audio &middot; '+audio+'</span>':'<span class="pill">Read only</span>');
+  return '<li class="course-card book-card" data-genre="'+g+'" data-audio="'+(audio?'yes':'no')+'" data-query="'+esc((b[1]+' '+b[2]+' '+g).toLowerCase())+'">'
+    +'<div class="book-row">'+cover+'<div class="book-info"><div class="course-pills">'+pills+'</div><h3><a href="'+APP+'/read/'+id+'">'+esc(b[1])+'</a></h3><p>'+esc(b[2])+' &middot; '+yr(b[3])+'</p></div></div>'
+    +'<div class="course-meta"><span>'+b[5]+' chapters</span><span>'+esc(b[6])+' read</span></div>'
+    +'<div class="course-foot"><a class="card-enroll" href="'+APP+'/read/'+id+'" target="_blank" rel="noopener">'+(audio?'Listen &amp; read':'Read')+'</a></div></li>';
+}
+function init(){
+  var grid=document.getElementById('bookGrid');if(!grid)return;
+  grid.innerHTML=BOOKS.map(card).join('');
+  var search=document.getElementById('book-search'),chips=document.getElementById('book-filters'),count=document.getElementById('book-count'),empty=document.getElementById('bookEmpty');
+  var filter='all';
+  function apply(){
+    var q=(search.value||'').trim().toLowerCase(),n=0;
+    grid.querySelectorAll('.book-card').forEach(function(el){
+      var ok=(filter==='all'||(filter==='audio'?el.dataset.audio==='yes':el.dataset.genre===filter))&&(!q||el.dataset.query.indexOf(q)!==-1);
+      el.style.display=ok?'':'none';if(ok)n++;
+    });
+    count.textContent='Showing '+n+' of '+BOOKS.length+' books';
+    empty.style.display=n?'none':'';
+  }
+  search.addEventListener('input',apply);
+  chips.addEventListener('click',function(e){
+    var b=e.target.closest('button[data-filter]');if(!b)return;
+    filter=b.dataset.filter;
+    chips.querySelectorAll('button').forEach(function(x){x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',x===b)});
+    apply();
+  });
+  document.querySelectorAll('[data-book-filter]').forEach(function(link){
+    link.addEventListener('click',function(){
+      var button=chips.querySelector('button[data-filter="'+link.dataset.bookFilter+'"]');
+      if(button)button.click();
+    });
+  });
+  apply();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();

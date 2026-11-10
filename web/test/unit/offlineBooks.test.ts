@@ -63,4 +63,9 @@ describe('saved books', () => {
     localStorage.setItem('bp-offline-books', '{not json')
     expect(getSavedBooks()).toEqual({})
   })
+
+  it.each(['null', '[]', '12', '{"alice":null}', '{"alice":{"files":null}}'])('ignores malformed saved-book indexes: %s', raw => {
+    localStorage.setItem('bp-offline-books', raw)
+    expect(getSavedBooks()).toEqual({})
+  })
 })

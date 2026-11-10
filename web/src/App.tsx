@@ -6,6 +6,7 @@ import { LibraryPage } from './pages/LibraryPage'
 import { AudioPlayer } from './components/AudioPlayer'
 import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 import { UpdateToast } from './components/UpdateToast'
+import { StorageWarning } from './components/StorageWarning'
 
 export function App() {
   return (
@@ -24,6 +25,7 @@ export function App() {
       <AudioPlayer />
       <KeyboardShortcuts />
       <UpdateToast />
+      <StorageWarning />
     </>
   )
 }
