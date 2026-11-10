@@ -18,6 +18,7 @@ import { sentenceRanges } from '../hooks/readAlong'
 import { getNarrationTime } from '../hooks/narration'
 import { loadHistory } from '../hooks/audioStorage'
 import { useReaderFontSize } from '../hooks/usePreferences'
+import { readLocal, writeLocal } from '../hooks/localStorage'
 import { TextSizeControls } from '../components/TextSizeControls'
 import { saveProgress, getProgress, setFinished, useFinished } from '../hooks/useReadingProgress'
 import { TimeLeft } from '../components/TimeLeft'
@@ -43,6 +44,10 @@ function firstVisibleOffset(container: HTMLElement): number {
   return offsetAtPoint(container, rect.left + 1, Math.min(inset + 16, rect.bottom - 1)) ?? 0
 }
 
+// Keep the source's own numbering: a preface must not shift Chapter 1 to 2.
+const chapterLabel = (title: string) => title.replace(/^Chapter (\d+)(?=:|$)/, '$1')
+const CHAPTERS_VISIBLE_KEY = 'bp-chapters-visible'
+
 export function ReaderPage() {
   const { slug } = useParams<{ slug: string }>()
   const catalogBook = CATALOG.find(b => b.id === slug)
@@ -51,6 +56,7 @@ export function ReaderPage() {
   const [loading, setLoading] = useState(true)
   const [notSavedOffline, setNotSavedOffline] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [desktopChaptersOpen, setDesktopChaptersOpen] = useState(() => readLocal(CHAPTERS_VISIBLE_KEY) !== 'false')
   const fontSize = useReaderFontSize()
   const [textPanelOpen, setTextPanelOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -94,6 +100,12 @@ export function ReaderPage() {
     setFocus(null)
     if (id === activeChapter) window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
     else setActiveChapter(id)
+  }
+
+  const toggleDesktopChapters = () => {
+    const next = !desktopChaptersOpen
+    setDesktopChaptersOpen(next)
+    writeLocal(CHAPTERS_VISIBLE_KEY, String(next))
   }
 
   useEffect(() => {
@@ -426,6 +438,14 @@ export function ReaderPage() {
             >
               Ch {visibleChapterIdx + 1}/{chapters.length}
             </button>
+            <button
+              onClick={toggleDesktopChapters}
+              aria-expanded={desktopChaptersOpen}
+              aria-controls="desktop-chapters"
+              className="hidden md:inline-flex min-h-10 items-center px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text border border-border"
+            >
+              {desktopChaptersOpen ? 'Hide chapters' : 'Show chapters'}
+            </button>
             {/* Phones: Save offline, text size and theme sit behind "More" on a row of their own,
                 so search, bookmarks, chapters and Play fit on one line; from sm they're inline */}
             <button
@@ -522,15 +542,16 @@ export function ReaderPage() {
                 <button
                   key={ch.id}
                   onClick={() => { selectChapter(ch.id); setSidebarOpen(false) }}
+                  aria-label={ch.title}
                   aria-current={activeChapter === ch.id ? 'true' : undefined}
-                  className={`w-full text-left px-3 py-2.5 rounded text-sm transition flex items-center gap-2 ${
+                  className={`w-full text-left px-3 py-2.5 rounded text-sm transition flex items-start gap-2 ${
                     activeChapter === ch.id ? 'bg-surface-hover text-text' : 'text-text-muted'
                   }`}
                 >
                   {playingChapterIdx === i && player.playing && (
-                    <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
+                    <span className="mt-1.5 w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
                   )}
-                  <span className="truncate">{ch.title}</span>
+                  <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">{chapterLabel(ch.title)}</span>
                 </button>
               ))}
             </div>
@@ -553,24 +574,25 @@ export function ReaderPage() {
         </div>
       )}
 
-      <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 md:grid md:grid-cols-[220px_minmax(0,1fr)] md:gap-8">
+      <div className={`max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 ${desktopChaptersOpen ? 'md:grid md:grid-cols-[220px_minmax(0,1fr)] md:gap-8' : ''}`}>
         {/* Desktop sidebar */}
-        <aside aria-labelledby="chapters-heading" className="hidden md:block">
+        <aside id="desktop-chapters" aria-labelledby="chapters-heading" className={desktopChaptersOpen ? 'hidden md:block' : 'hidden'}>
           <h2 id="chapters-heading" className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Chapters</h2>
           <div className="space-y-1 sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto">
             {chapters.map((ch, i) => (
               <button
                 key={ch.id}
                 onClick={() => selectChapter(ch.id)}
+                aria-label={ch.title}
                 aria-current={activeChapter === ch.id ? 'true' : undefined}
-                className={`w-full text-left px-3 py-2 rounded text-sm transition flex items-center gap-2 ${
+                className={`w-full text-left px-3 py-2 rounded text-sm transition flex items-start gap-2 ${
                   activeChapter === ch.id ? 'bg-surface-hover text-text' : 'text-text-muted hover:text-text hover:bg-surface'
                 }`}
               >
                 {playingChapterIdx === i && player.playing && (
-                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
+                  <span className="mt-1.5 w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" role="img" aria-label="Playing" />
                 )}
-                <span className="truncate">{ch.title}</span>
+                <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">{chapterLabel(ch.title)}</span>
               </button>
             ))}
           </div>

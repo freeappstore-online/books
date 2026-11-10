@@ -269,6 +269,11 @@ export async function openReaderMore(page: Page) {
 export async function openChapter(page: Page, idx: number, book = alice) {
   const aside = page.locator('aside button').nth(idx)
   if (await aside.isVisible()) return aside.click()
+  const show = page.locator('header').getByRole('button', { name: 'Show chapters', exact: true })
+  if (await show.isVisible()) {
+    await show.click()
+    return aside.click()
+  }
   await page.locator('header').getByRole('button', { name: /^Chapters: chapter / }).click()
   await page.getByRole('button', { name: book.chapters[idx].title, exact: true }).click()
 }
