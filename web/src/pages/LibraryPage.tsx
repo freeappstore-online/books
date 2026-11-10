@@ -30,7 +30,7 @@ export function LibraryPage() {
     <div className="min-h-dvh bg-page text-text">
       <NavBar title="My books" />
 
-      <main className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">
+      <main className="min-w-0 [overflow-wrap:anywhere] max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <InProgress />
         <Finished />
         <BookNotes />
@@ -63,10 +63,10 @@ function InProgress() {
       ) : (
         <div className="divide-y divide-border">
           {books.map(({ book, progress }) => (
-            <div key={book.id} className="py-3 flex items-center gap-3">
+            <div key={book.id} className="py-3 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 md:flex md:items-center">
               <BookCover book={book} size="sm" />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{book.title}</div>
+                <div className="text-sm font-medium">{book.title}</div>
                 <div className="text-xs text-text-dim mt-0.5">{book.author} · Chapter {progress.chapterIdx + 1} of {book.chapters}</div>
                 <div className="mt-1.5 h-1 max-w-48 bg-surface-hover rounded-full overflow-hidden">
                   <div className="h-full bg-accent rounded-full" style={{ width: `${progressPercent(progress)}%` }} />
@@ -79,7 +79,7 @@ function InProgress() {
                   Mark as finished
                 </button>
               </div>
-              <div className="shrink-0 flex flex-col items-end gap-2">
+              <div className="col-span-2 min-w-0 flex flex-wrap items-center justify-end gap-2 md:shrink-0 md:flex-col md:items-end">
                 <Link to={readPath(book.id)} className="min-h-10 inline-flex items-center rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-btn-text hover:bg-accent-hover transition">
                   Resume
                 </Link>
@@ -108,12 +108,12 @@ function Finished() {
       <h2 className="text-lg font-display mb-3">Finished</h2>
       <div className="divide-y divide-border">
         {books.map(book => (
-          <div key={book.id} className="py-3 flex items-center gap-3">
+          <div key={book.id} className="py-3 flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-3">
             <div className="min-w-0 flex-1">
               <Link to={readPath(book.id)} className="text-sm font-medium hover:text-accent transition">{book.title}</Link>
               <div className="text-xs text-text-dim mt-0.5">{book.author}</div>
             </div>
-            <button onClick={() => setFinished(book.id, false)} className="shrink-0 text-xs text-text-muted hover:text-text transition">
+            <button onClick={() => setFinished(book.id, false)} className="min-h-10 text-left md:shrink-0 text-xs text-text-muted hover:text-text transition">
               Not finished
             </button>
           </div>
@@ -144,11 +144,11 @@ function BookNotes() {
         {books.map(book => (
           <details key={book.id} className="py-2 group">
             <summary className="cursor-pointer list-none flex items-center justify-between gap-3 py-1">
-              <span className="min-w-0">
-                <span className="block text-sm font-medium truncate">{book.title}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{book.title}</span>
                 <span className="block text-xs text-text-dim">{all[book.id].length} saved</span>
               </span>
-              <span className="text-text-dim text-xs group-open:rotate-180 transition" aria-hidden="true">&#9662;</span>
+              <span className="shrink-0 text-text-dim text-xs group-open:rotate-180 transition" aria-hidden="true">&#9662;</span>
             </summary>
             <div className="mt-1">
               <AnnotationList
@@ -193,10 +193,10 @@ function SavedBooks() {
 
   return (
     <section className="bg-surface rounded-xl border border-border p-5 md:p-6 mb-6">
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-start md:justify-between md:gap-3 mb-3">
         <h2 className="text-lg font-display">Saved on this device</h2>
         {storage && Object.keys(saved).length > 0 && (
-          <div className="text-xs text-text-dim text-right">
+          <div className="min-w-0 text-xs text-text-dim md:max-w-[55%] md:text-right">
             {formatBytes(storage.usage)} used{storage.quota > 0 && ` of ${formatBytes(storage.quota)}`}
             <div>{storage.persisted ? 'Kept until you remove them' : 'Your browser may remove them if the device runs low on space'}</div>
           </div>
@@ -222,7 +222,7 @@ function SavedBooks() {
             const audio = book ? savedAudioChapters(book) : 0
             const reason = book && manifest ? updateReason(slug, book, manifest) : null
             return (
-              <div key={slug} className="py-3 flex items-center gap-3">
+              <div key={slug} className="py-3 flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-3">
                 <div className="min-w-0 flex-1">
                   <Link to={readPath(slug)} className="text-sm font-medium hover:text-accent transition">
                     {catalogBook?.title ?? slug}
@@ -240,11 +240,11 @@ function SavedBooks() {
                   )}
                 </div>
                 {job ? (
-                  <button onClick={job.cancel} className="min-h-10 px-2 text-xs text-text-muted hover:text-danger transition shrink-0">Cancel</button>
+                  <button onClick={job.cancel} className="min-h-10 px-2 text-left text-xs text-text-muted hover:text-danger transition md:shrink-0">Cancel</button>
                 ) : (
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="min-w-0 max-w-full flex flex-wrap items-center gap-1 md:shrink-0">
                     {reason && online && (
-                      <button onClick={() => saveBook(slug, book.voice)} className="min-h-10 px-2 text-xs text-accent hover:underline">
+                      <button onClick={() => saveBook(slug, book.voice)} className="max-w-full min-h-10 px-2 text-left text-xs text-accent hover:underline">
                         Update ({reason})
                       </button>
                     )}

@@ -28,7 +28,7 @@ export function AnnotationList({ slug, list, chapterTitles, onJump }: {
   onJump: (a: Annotation) => void
 }) {
   const [editing, setEditing] = useState<Annotation | null>(null)
-  const link = 'text-xs text-text-muted hover:text-text transition'
+  const link = 'min-h-10 text-xs text-text-muted hover:text-text transition'
 
   return (
     <>
@@ -40,7 +40,7 @@ export function AnnotationList({ slug, list, chapterTitles, onJump }: {
                 ? <BookmarkIcon size={14} />
                 : <span className={`block w-3.5 h-3.5 rounded-full ${HIGHLIGHT_COLORS[a.color ?? 'yellow'].className}`} />}
             </span>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
               <div className="text-xs text-text-dim truncate">
                 {chapterTitles[a.chapterIdx] ?? `Chapter ${a.chapterIdx + 1}`}
                 {a.seconds !== undefined && ` · ${formatSeconds(a.seconds)}`}
@@ -50,10 +50,10 @@ export function AnnotationList({ slug, list, chapterTitles, onJump }: {
                 {a.kind === 'highlight' ? `“${a.text}”` : a.text}
               </button>
               {a.note && <p className="mt-1 text-sm italic text-text whitespace-pre-wrap">{a.note}</p>}
-              <div className="mt-1 flex gap-4">
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
                 <button onClick={() => onJump(a)} className={link}>Go to</button>
                 <button onClick={() => setEditing(a)} className={link}>{a.note ? 'Edit' : 'Add note'}</button>
-                <button onClick={() => deleteAnnotation(slug, a)} className="text-xs text-text-muted hover:text-danger transition">Delete</button>
+                <button onClick={() => deleteAnnotation(slug, a)} className="min-h-10 text-xs text-text-muted hover:text-danger transition">Delete</button>
               </div>
             </div>
           </li>
