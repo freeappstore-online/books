@@ -3,7 +3,7 @@ import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { getNarrationTime, primeNarration, useNarrationPosition } from '../hooks/narration'
 import { chapterSeconds, isNarrated, preparedUrl, usePreparedManifest } from '../hooks/preparedAudio'
 import { useNavigate } from 'react-router-dom'
-import { CATALOG } from '../data/catalog'
+import { CATALOG, readPath } from '../data/catalog'
 import { fetchChapters, usePlayableManifest } from '../hooks/offlineBooks'
 import { SleepButton, SpeedButton, formatTime } from './PlayerMenus'
 
@@ -54,7 +54,7 @@ export function AudioPlayer() {
     try {
       const chapters = await fetchChapters(catalogBook.contentPath)
       loadAndPlay({ slug, title: catalogBook.title, author: catalogBook.author, chapters })
-      navigate(`/read/${slug}`)
+      navigate(readPath(slug))
     } catch { /* ignore */ }
   }
 
@@ -169,7 +169,7 @@ export function AudioPlayer() {
       <div className="px-3 md:px-4 py-1 sm:py-2 max-w-4xl mx-auto flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-2 md:gap-x-3">
         {/* Book info */}
         <button
-          onClick={() => navigate(`/read/${book.slug}`)}
+          onClick={() => navigate(readPath(book.slug))}
           className="basis-full sm:basis-auto sm:flex-1 min-w-0 text-left flex items-baseline gap-2 sm:block"
         >
           <div className="text-sm font-semibold truncate min-w-0">{book.title}</div>

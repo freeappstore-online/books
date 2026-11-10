@@ -53,7 +53,7 @@ test('offline: unsaved books are reading-only, saved chapters play, reconnecting
 
   await page.goto('/').catch(() => {})
   await page.waitForSelector('text=All Books')
-  const pill = page.locator(`a[href="/read/${SLUG}"]`).filter({ hasText: 'Audiobook' })
+  const pill = page.locator(`a[href="/read/${SLUG}/"]`).filter({ hasText: 'Audiobook' })
   await expect(pill, 'offline: no Audiobook pill for the unsaved book').toHaveCount(0)
   await setOffline(context, hf, false)
   await expect(pill.first(), 'back online: the pill returns').toBeAttached()

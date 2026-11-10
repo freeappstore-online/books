@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CATALOG, GENRES, ALL_TAGS, type CatalogBook } from '../data/catalog'
+import { CATALOG, GENRES, ALL_TAGS, formatYear, readPath, type CatalogBook } from '../data/catalog'
 import { BookCover } from '../components/BookCover'
 import { NavBar } from '../components/NavBar'
 import { booksInProgress, progressPercent, useFinished, type BookProgress } from '../hooks/useReadingProgress'
@@ -220,7 +220,7 @@ export function CatalogPage() {
 /** A cover on the Audiobooks or Featured shelf. */
 function ShelfBook({ book, narrated, className }: { book: CatalogBook; narrated: number; className: string }) {
   return (
-    <Link to={`/read/${book.id}`} className={`group ${className}`}>
+    <Link to={readPath(book.id)} className={`group ${className}`}>
       <BookCover book={book} size="lg" />
       <div className="mt-2 flex items-center justify-between gap-2">
         <p className="text-xs md:text-sm text-text-muted group-hover:text-text transition">{book.readTime}</p>
@@ -237,7 +237,7 @@ function BookListItem({ book, narrated, saved, online, progress, finished }: {
 
   return (
     <Link
-      to={`/read/${book.id}`}
+      to={readPath(book.id)}
       className={`group flex gap-3 md:gap-5 bg-surface border border-border rounded-lg p-3 md:p-4 hover:border-accent transition ${!online && !saved ? 'opacity-40' : ''}`}
     >
       <BookCover book={book} size="sm" />
@@ -298,7 +298,7 @@ function ContinueShelf({ entries, dim }: { entries: { book: CatalogBook; narrate
           const pct = progressPercent(progress)
           return (
             <div key={book.id} className={dim(book.id)}>
-              <Link to={`/read/${book.id}`} className="group block" aria-label={`Continue reading ${book.title}`}>
+              <Link to={readPath(book.id)} className="group block" aria-label={`Continue reading ${book.title}`}>
                 <BookCover book={book} size="lg" />
               </Link>
               <div className="mt-2 h-1 bg-surface-hover rounded-full overflow-hidden">
@@ -325,8 +325,4 @@ function AudiobookPill({ narrated, chapters }: { narrated: number; chapters: num
       Audiobook{narrated < chapters && ` · ${narrated}/${chapters} ch`}
     </span>
   )
-}
-
-function formatYear(year: number): string {
-  return year > 0 ? String(year) : `${Math.abs(year)} BC`
 }

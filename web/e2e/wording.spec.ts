@@ -29,8 +29,8 @@ test.describe('wording and reading-only books', () => {
 
   test('the catalogue marks narrated books only', async ({ page }) => {
     await page.goto('/')
-    await expect(page.locator(`a[href="/read/${SLUG}"]`).filter({ hasText: 'Audiobook' }).first()).toBeAttached()
-    await expect(page.locator('a[href="/read/dracula"]').filter({ hasText: 'Audiobook' })).toHaveCount(0)
+    await expect(page.locator(`a[href="/read/${SLUG}/"]`).filter({ hasText: 'Audiobook' }).first()).toBeAttached()
+    await expect(page.locator('a[href="/read/dracula/"]').filter({ hasText: 'Audiobook' })).toHaveCount(0)
   })
 
   test('the reader has exactly one listen control, Play, and no player before it', async ({ page }) => {

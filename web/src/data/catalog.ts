@@ -1238,5 +1238,14 @@ export const CATALOG: CatalogBook[] = [
   { id: 'life-on-the-mississippi', title: "Life on the Mississippi", author: "Mark Twain", authorBio: "American writer, humorist, and lecturer, the father of American literature.", year: 1883, genre: "Non-Fiction", tags: ["memoir", "travel", "american", "river", "humor"], description: "Twain recalls learning to be a steamboat pilot on the Mississippi before the Civil War, then returns twenty years later to travel the river again.", excerpt: "The Mississippi is well worth reading about. It is not a commonplace river, but on the contrary is in all ways remarkable...", chapters: 61, readTime: '8h 30min', coverGradient: "from-slate-800 to-gray-950", coverAccent: "#94A3B8", contentPath: "/catalog/life-on-the-mississippi.json" },
 ]
 
+/** A book's address. Ends in "/" so the host serves its static page, read/<slug>/index.html (books#47). */
+export function readPath(slug: string): string {
+  return `/read/${slug}/`
+}
+
+export function formatYear(year: number): string {
+  return year > 0 ? String(year) : `${Math.abs(year)} BC`
+}
+
 export const GENRES = [...new Set(CATALOG.map(b => b.genre))].sort()
 export const ALL_TAGS = [...new Set(CATALOG.flatMap(b => b.tags))].sort()

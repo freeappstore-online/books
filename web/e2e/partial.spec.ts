@@ -52,7 +52,7 @@ test('plays the narrated chapters without read-along, passes over the rest, whic
   // The catalogue lists it as an audiobook; Continue resumes its narration
   await page.goto('/')
   const audiobooks = page.locator('section', { has: page.getByRole('heading', { name: 'Audiobooks' }) })
-  await expect(audiobooks.locator(`a[href="/read/${PARTIAL}"]`)).toBeVisible()
+  await expect(audiobooks.locator(`a[href="/read/${PARTIAL}/"]`)).toBeVisible()
   const shelf = page.locator('section[aria-labelledby="continue-heading"]')
   // Shows where it was read last (chapter 1); Listen resumes the narration where it stopped
   await expect(shelf).toContainText(`Ch 1/${partial.chapters.length}`)

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { NavBar } from '../components/NavBar'
 import { BookCover } from '../components/BookCover'
-import { CATALOG } from '../data/catalog'
+import { CATALOG, readPath } from '../data/catalog'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { booksInProgress, progressPercent, setFinished, useFinished } from '../hooks/useReadingProgress'
 import { ListenButton } from '../components/ListenButton'
@@ -80,7 +80,7 @@ function InProgress() {
                 </button>
               </div>
               <div className="shrink-0 flex flex-col items-end gap-2">
-                <Link to={`/read/${book.id}`} className="min-h-10 inline-flex items-center rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-btn-text hover:bg-accent-hover transition">
+                <Link to={readPath(book.id)} className="min-h-10 inline-flex items-center rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-btn-text hover:bg-accent-hover transition">
                   Resume
                 </Link>
                 {playable && isNarrated(playable, book.id) && (
@@ -110,7 +110,7 @@ function Finished() {
         {books.map(book => (
           <div key={book.id} className="py-3 flex items-center gap-3">
             <div className="min-w-0 flex-1">
-              <Link to={`/read/${book.id}`} className="text-sm font-medium hover:text-accent transition">{book.title}</Link>
+              <Link to={readPath(book.id)} className="text-sm font-medium hover:text-accent transition">{book.title}</Link>
               <div className="text-xs text-text-dim mt-0.5">{book.author}</div>
             </div>
             <button onClick={() => setFinished(book.id, false)} className="shrink-0 text-xs text-text-muted hover:text-text transition">
@@ -155,7 +155,7 @@ function BookNotes() {
                 slug={book.id}
                 list={all[book.id]}
                 chapterTitles={[]}
-                onJump={a => navigate(`/read/${book.id}?ch=${a.chapterIdx}&at=${a.start}`)}
+                onJump={a => navigate(`${readPath(book.id)}?ch=${a.chapterIdx}&at=${a.start}`)}
               />
               <button
                 onClick={() => exportBook(book.id, book.title, book.author)}
@@ -224,7 +224,7 @@ function SavedBooks() {
             return (
               <div key={slug} className="py-3 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <Link to={`/read/${slug}`} className="text-sm font-medium hover:text-accent transition">
+                  <Link to={readPath(slug)} className="text-sm font-medium hover:text-accent transition">
                     {catalogBook?.title ?? slug}
                   </Link>
                   <div className="text-xs text-text-dim mt-0.5">
