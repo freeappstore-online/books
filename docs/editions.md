@@ -27,7 +27,7 @@ format of each file is in [edition/README.md](../edition/README.md).
   config must not import that module.
 - **The build** (the `edition` plugin in `vite.config.ts`):
   - fills `{{edition.<key>}}` in `index.html` from the config;
-  - writes `manifest.json` from `manifest.template.json` and the config;
+  - writes `manifest.json` from `public/manifest.json` with the config's name and language;
   - copies `texts/` to `/catalog/` and `covers/` to `/covers/`. Those URLs never change: saved books,
     read-along timings and resume positions are keyed by them.
   - copies `public/` to the site root.

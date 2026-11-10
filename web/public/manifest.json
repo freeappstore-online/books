@@ -1,4 +1,6 @@
 {
+  "name": "Books",
+  "short_name": "Books",
   "start_url": "/",
   "id": "/",
   "scope": "/",
