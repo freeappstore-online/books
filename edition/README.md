@@ -23,7 +23,7 @@ Everything else is generated from these files:
 | Generated | By | Holds |
 |---|---|---|
 | `edition/texts/<slug>.json` | `scripts/catalog/fetch.py` | the text, split into chapters |
-| `edition/books.json` | `scripts/catalog/books.py` (also run by `fetch.py`) | what the app lists, with each book's chapter count and reading time |
+| `edition/books.json` | `scripts/catalog/books.py` (also run by `fetch.py`) | what the app lists, with each book's chapter count and reading time in minutes |
 | `edition/covers/<slug>.webp`, `edition/covers.json` | `scripts/catalog/covers.py` | the covers |
 
 Never edit a generated file by hand. CI's *Catalogue pipeline* workflow checks that `books.json`
@@ -43,7 +43,7 @@ works and how to change it safely: [docs/catalogue-pipeline.md](../docs/catalogu
 title = "Pride and Prejudice"
 author = "Jane Austen"
 year = 1813                      # first publication; negative for BCE (-500 is 500 BC)
-genre = "Fiction"                # Fiction, Non-Fiction, Drama or Poetry (the app's genre filter)
+genre = "Fiction"                # a fixed key: Fiction, Non-Fiction, Drama or Poetry, labelled in the app's language
 tags = ["romance", "classic", "social commentary", "british"]
 language = "en"                  # BCP 47 language of the text
 author_bio = "English novelist known for her sharp social commentary and witty prose about the British landed gentry."
