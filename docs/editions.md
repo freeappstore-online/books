@@ -36,3 +36,16 @@ format of each file is in [edition/README.md](../edition/README.md).
   the config.
 - **Another edition:** `BOOKS_EDITION=/path/to/edition` points the build, the unit tests, the
   scripts and the marketing generator at it.
+
+## Keeping a language app in sync
+
+- **`scripts/edition/sync-upstream.sh`** merges `books` main into a language app:
+  - the app's own paths stay exactly as they are;
+  - new English books and `books`' README are dropped;
+  - a conflict in engine files stops it, and the files are listed.
+- **`scripts/edition/check-engine.sh`** fails when the app has changed engine files since the last
+  `books` commit it merged.
+- **Workflows:** `.github/workflows/sync.yml` runs the sync weekly or by hand, checks the result,
+  pushes, deploys, and opens an issue when it fails. `engine-check.yml` runs the drift check on
+  every push. In `books` itself both workflows skip.
+- **Creating a language app, step by step:** [new-language-app.md](new-language-app.md).

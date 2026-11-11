@@ -1,0 +1,78 @@
+name: Sync with books
+
+# A language app (a fork of books, docs/editions.md) takes engine changes by merging books main
+# (books#58). Weekly and by hand: merge, keeping this app's own files; run the checks; push to main
+# and start the deploy and tests (a push made with GITHUB_TOKEN starts no workflows by itself).
+# On any failure, open or update one issue in this repository instead, and push nothing.
+# In books itself the job is skipped.
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+concurrency:
+  group: sync-books
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository != 'freeappstore-online/books'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Merge books main
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          before=$(git rev-parse HEAD)
+          scripts/edition/sync-upstream.sh
+          if [ "$(git rev-parse HEAD)" = "$before" ]; then echo "merged=false" >> "$GITHUB_OUTPUT"; else echo "merged=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: pnpm/action-setup@v4
+        if: steps.merge.outputs.merged == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.merge.outputs.merged == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        if: steps.merge.outputs.merged == 'true'
+        with:
+          python-version: '3.12'
+      - name: Check the merged app
+        if: steps.merge.outputs.merged == 'true'
+        run: |
+          scripts/edition/check-engine.sh
+          pip install -q Pillow
+          python3 scripts/catalog/books.py --check
+          python3 scripts/catalog/test_catalog.py
+          cd web
+          pnpm install --frozen-lockfile
+          pnpm exec tsc -b
+          pnpm test
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e --project=chromium
+      - name: Push, deploy and test
+        if: steps.merge.outputs.merged == 'true'
+        run: |
+          git push origin HEAD:main
+          gh workflow run deploy.yml --ref main
+          gh workflow run test.yml --ref main
+      - name: Report the failure
+        if: failure()
+        run: |
+          title="Sync with books failed"
+          body="The sync with [books](https://github.com/freeappstore-online/books) failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Nothing was pushed. How to fix it: docs/new-language-app.md, \"When the sync fails\"."
+          n=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$body"; else gh issue create --title "$title" --body "$body"; fi

@@ -1,0 +1,26 @@
+name: Engine unchanged
+
+# In a language app (a fork of books, docs/editions.md), engine files only change through the sync
+# with books (sync.yml). This fails a push or pull request that edits them here (books#58).
+# In books itself the job is skipped.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.repository != 'freeappstore-online/books'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: scripts/edition/check-engine.sh
