@@ -21,13 +21,14 @@ pnpm exec tsc -b          # typecheck, app and tests
 pnpm test                 # Vitest (unit; also run by the deploy before it builds): read-along, narration manifest, positions, text sizes, offline helpers
 pnpm exec playwright install chromium firefox webkit   # once
 pnpm test:e2e             # Playwright: builds, serves the build, runs every project
-pnpm test:e2e --project=chromium   # one project: chromium, firefox, webkit (iPhone 13) or edge
+pnpm test:e2e --project=chromium   # one project: chromium, firefox, webkit (iPhone 13), edge or es
 ```
 
 The e2e tests stub Hugging Face with silent WAVs and generated timings (`web/e2e/fixtures.ts`), so
 they need no network. The `edge` project covers offline and app-update edge cases in Chromium with
 the real service worker, against `web/e2e/edge/server.ts`, which can stall a stream and serve a second
-build of the app.
+build of the app. The `es` project builds the Spanish test edition (`web/test/edition-es/`) and checks
+that no English is left in the interface (books#54).
 
 Before closing a playback issue, also check on real devices, which headless browsers can't stand in for:
 
