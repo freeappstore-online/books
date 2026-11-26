@@ -22,6 +22,8 @@ export interface EditionConfig {
     /** Narrator voice id: the manifest key and folder in the dataset */
     voice: string
     engine: string
+    /** The platform job set listeners' devices narrate the missing chapters from (books#66) */
+    communitySet?: string
   }
 }
 

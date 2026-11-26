@@ -4,7 +4,7 @@
  * Files live in an app-owned Cache Storage bucket, keyed by the URL they came
  * from: the book's text, every prepared narration chapter (.m4a) with its
  * word timings (.timings.json) and spoken title (.title.m4a) when published, plus a copy of the narration
- * manifest so the app knows what's narrated while offline. Which books are
+ * manifest (and of the community narration's, books#66) so the app knows what's narrated while offline. Which books are
  * saved, and how large each file is, is kept in localStorage.
  */
 import { useEffect, useMemo, useState } from 'react'
@@ -13,7 +13,8 @@ import { LOCALE, t } from '../locales'
 import { coverUrl } from '../components/BookCover'
 import type { AudioChapter } from './useAudioPlayer'
 import {
-  MANIFEST_URL, getManifestExtras, hasTimings, parseManifest, preparedCount, preparedTitleUrl, preparedUrl,
+  COMMUNITY_MANIFEST_URL, MANIFEST_URL, addCommunity, chapterHasTimings, getManifestExtras, parseManifest, preparedCount,
+  preparedTitleUrl, preparedUrl,
   preparedTimingsUrl, titleSeconds, usePreparedManifest, type ManifestExtras, type PreparedManifest,
 } from './preparedAudio'
 
@@ -236,6 +237,9 @@ export function saveBook(slug: string, voice: string | null) {
       const manifestRes = voice ? await fetch(MANIFEST_URL, { signal }) : null
       if (manifestRes && !manifestRes.ok) throw new Error(`Narration manifest: ${manifestRes.status}`)
       const { manifest, extras } = parseManifest(manifestRes ? await manifestRes.clone().json() : {})
+      // Chapters the dataset lacks may have community narration; without it the save goes on without them
+      const communityRes = voice && COMMUNITY_MANIFEST_URL ? await fetch(COMMUNITY_MANIFEST_URL, { signal }).catch(() => null) : null
+      if (communityRes?.ok) addCommunity(manifest, await communityRes.clone().json())
       const durations = (voice && manifest[voice]?.[slug]) || []
       const narrated = durations.some(d => d != null)
       total = (voice && estimateAudioBytes(manifest, slug, voice, extras)) || 1
@@ -250,6 +254,7 @@ export function saveBook(slug: string, voice: string | null) {
       const cover = coverUrl(slug)
       if (cover) await fetch(cover, { signal }).catch(() => {})
       if (narrated && manifestRes) await cache.put(MANIFEST_URL, manifestRes)
+      if (narrated && communityRes?.ok) await cache.put(COMMUNITY_MANIFEST_URL!, communityRes)
       for (let i = 0; i < durations.length; i++) {
         if (durations[i] == null) continue
         const audio = preparedUrl(slug, i, voice!)
@@ -257,7 +262,7 @@ export function saveBook(slug: string, voice: string | null) {
         else await store(audio, true)
         // Word timings and the spoken title sit next to each chapter, and may be published after it
         const timings = preparedTimingsUrl(slug, i, voice!)
-        if (!files[timings] && hasTimings(extras, slug, voice!)) await store(timings, false)
+        if (!files[timings] && chapterHasTimings(extras, slug, i, voice!)) await store(timings, false)
         const title = preparedTitleUrl(slug, i, voice!)
         if (files[title]) done += files[title]
         else if (titleSeconds(extras, slug, i, voice!) !== null) await store(title, false)
@@ -296,7 +301,10 @@ async function removeFiles(urls: string[]) {
   const cache = await caches.open(CACHE)
   await Promise.all(urls.map(url => cache.delete(url)))
   // A failed update can still have its original narrated save in the index.
-  if (!Object.values(getSavedBooks()).some(b => b.voice)) await cache.delete(MANIFEST_URL)
+  if (!Object.values(getSavedBooks()).some(b => b.voice)) {
+    await cache.delete(MANIFEST_URL)
+    if (COMMUNITY_MANIFEST_URL) await cache.delete(COMMUNITY_MANIFEST_URL)
+  }
 }
 
 /**
@@ -324,7 +332,10 @@ if (typeof caches !== 'undefined' && navigator.locks) {
     if (!lock) return
     const books = Object.values(getSavedBooks())
     const keep = new Set(books.flatMap(b => Object.keys(b.files)))
-    if (books.some(b => b.voice)) keep.add(MANIFEST_URL)
+    if (books.some(b => b.voice)) {
+      keep.add(MANIFEST_URL)
+      if (COMMUNITY_MANIFEST_URL) keep.add(COMMUNITY_MANIFEST_URL)
+    }
     const cache = await caches.open(CACHE)
     const requests = await cache.keys()
     const available = new Set(requests.map(req => req.url))

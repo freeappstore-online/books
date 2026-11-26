@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { CATALOG } from '../../src/data/catalog'
 import {
-  VOICE, chapterSeconds, hasTimings, isNarrated, parseManifest, preparedCount, preparedTimingsUrl, preparedTitleUrl,
-  preparedUrl, titleSeconds, type PreparedManifest,
+  VOICE, addCommunity, chapterHasTimings, chapterSeconds, hasTimings, isNarrated, parseManifest, preparedCount,
+  preparedTimingsUrl, preparedTitleUrl, preparedUrl, titleSeconds, type PreparedManifest,
 } from '../../src/hooks/preparedAudio'
+import { mergeCommunity } from '../../src/hooks/manifest'
 
 // The real manifest.json of serge-ivo/books-audio (Alice only)
 const real = JSON.parse(readFileSync(new URL('../fixtures/manifest.json', import.meta.url), 'utf8')) as PreparedManifest
@@ -101,5 +102,47 @@ describe('manifest contract (books#37)', () => {
     expect(titleSeconds(extras, SLUG, 7)).toBeNull()
     expect(titleSeconds(extras, 'dracula', 0)).toBeNull()
     expect(titleSeconds(null, SLUG, 0)).toBeNull()
+  })
+})
+
+describe('community narration (books#66)', () => {
+  const api = 'https://api.freeappstore.online/v1/apps/books/generation/artifacts'
+  const artifact = (key: string, durationMs: number | null, meta = true) => ({
+    key, jobId: key, url: `${api}/${key}?v=1`, ...(meta ? { metaUrl: `${api}/${key}/meta?v=1` } : {}), durationMs,
+  })
+  const books = [{ id: SLUG, chapters: 4 }, { id: 'as-i-lay-dying', chapters: 3, narrationRevision: 'complete-text-v1' }]
+
+  it('fills only the chapters the dataset lacks: the dataset wins', () => {
+    const manifest: PreparedManifest = { [VOICE]: { [SLUG]: [10, null, 12, null] } }
+    const raw = { artifacts: [artifact(`${SLUG}/0`, 99_000), artifact(`${SLUG}/1`, 20_049), artifact(`${SLUG}/3`, 5_000, false)] }
+    const added = mergeCommunity(manifest, VOICE, raw, books)
+    expect(manifest[VOICE][SLUG]).toEqual([10, 20, 12, 5])
+    expect(Object.keys(added)).toEqual([`${SLUG}/1`, `${SLUG}/3`])
+    expect(added[`${SLUG}/3`].metaUrl).toBeNull()
+  })
+
+  it('adds books the dataset has none of, and drops other revisions, unverified and unknown chapters', () => {
+    const manifest: PreparedManifest = {}
+    const raw = { artifacts: [
+      artifact('as-i-lay-dying/0', 1_000), artifact('as-i-lay-dying/complete-text-v1/2', 3_000),
+      artifact(`${SLUG}/1`, null), artifact(`${SLUG}/9`, 1_000), artifact('no-such-book/0', 1_000), { key: 7 },
+    ] }
+    expect(Object.keys(mergeCommunity(manifest, VOICE, raw, books))).toEqual(['as-i-lay-dying/2'])
+    expect(manifest).toEqual({ [VOICE]: { 'as-i-lay-dying': [null, null, 3] } })
+    expect(mergeCommunity(manifest, VOICE, null, books)).toEqual({})
+    expect(mergeCommunity(manifest, VOICE, { artifacts: 'x' }, books)).toEqual({})
+  })
+
+  it('plays and times community chapters from the platform', () => {
+    const { manifest, extras } = parseManifest({ [VOICE]: { [SLUG]: [10, null] }, extras: { [VOICE]: { [SLUG]: { timings: false } } } })
+    addCommunity(manifest, { artifacts: [artifact(`${SLUG}/1`, 30_000), artifact(`${SLUG}/0`, 1_000)] })
+    expect(chapterSeconds(manifest, SLUG, 1)).toBe(30)
+    expect(preparedUrl(SLUG, 1)).toBe(`${api}/${SLUG}/1?v=1`)
+    expect(preparedTimingsUrl(SLUG, 1)).toBe(`${api}/${SLUG}/1/meta?v=1`)
+    expect(chapterHasTimings(extras, SLUG, 1)).toBe(true)
+    // The dataset's chapter stays the dataset's
+    expect(preparedUrl(SLUG, 0)).toContain('huggingface.co')
+    expect(chapterHasTimings(extras, SLUG, 0)).toBe(false)
+    expect(preparedUrl(SLUG, 1, 'other_voice')).toContain('huggingface.co')
   })
 })

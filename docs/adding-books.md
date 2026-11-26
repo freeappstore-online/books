@@ -290,6 +290,50 @@ access to `serge-ivo/books-audio`). Never print it.
   reading-only until its narration lands. Check that the book now shows the Audiobook pill and that
   chapters play at once on a phone.
 
+## Community narration
+
+Chapters the dataset has no audio for can also be narrated by listeners' devices (books#66, on the
+platform's community generation, [platform#727](https://github.com/freeappstore-online/platform/issues/727)
+and its `docs/community-generation.md`). The platform hands each chapter to one signed-in listener who
+opted in, verifies the upload (format, length against the text, a speech-to-text check) and only then
+lists it in the job set's public manifest. The app plays those chapters where the dataset has none;
+where both exist the dataset wins (`web/src/hooks/preparedAudio.ts`, `mergeCommunity` in `manifest.ts`).
+
+**Queueing the jobs:** the *Community narration jobs* workflow (`.github/workflows/community-narration.yml`,
+`scripts/audio/community.py`), started by hand from `main`:
+
+```bash
+gh workflow run community-narration.yml -R freeappstore-online/books -f books="north-and-south" -f dry_run=true
+gh workflow run community-narration.yml -R freeappstore-online/books -f books="north-and-south"
+# books empty: every chapter of the catalogue without narration (about 7,500 chapters, 129M characters on 2026-11-26)
+```
+
+- One job per chapter that has no `<voice>/<slug>/<chapter>.m4a` in the dataset (the check `plan.py`
+  makes). Key `<slug>/<chapter>`, or `<slug>/<revision>/<chapter>` for a text with a `narrationRevision`;
+  input exactly the chapter's `content`, so the timings a device sends are offsets into the catalogue
+  text, as `timings.json` is. Chapters over 100,000 characters (the platform's limit, about 25 chapters)
+  are left to *Generate audio* and listed as warnings.
+- Re-running sends the same jobs again, which changes nothing. A chapter whose text has changed since
+  it was queued (without a new `narrationRevision`) is refused with a 409 that names its key.
+- The job set is `audio.communitySet` in `edition/config.json`: Kokoro `v1.0`, `{voice}` = the edition's
+  `audio.voice`, `audio/mp4`, one replica. The first run creates it, commits the id and redeploys the
+  app. Changing `audio.voice` needs a new set: remove `communitySet` and run the workflow again.
+- The workflow authenticates with its GitHub Actions OIDC token (`id-token: write`); the platform
+  accepts it as the app owner only from `refs/heads/main` of the repository the app is pinned to (its
+  first keyless deploy). No secret is involved. `dry_run` lists the jobs and calls nothing.
+
+**Narrating:** in the app, *Settings → Help narrate books*: sign in (GitHub or Google), turn on
+*Narrate on this device*, then *Start narrating*. It runs the voice in the browser
+(`web/src/hooks/contribute.ts`, `narrator.worker.ts`: WebGPU when there is one, else WebAssembly; about
+330 or 90 MB downloaded once), a sentence at a time split as `segments.py` does
+(`narrationText.ts`), and encodes AAC into an MP4 with WebCodecs. It sends the sentence timings as the
+upload's `meta` (`{segments: [...]}`), which the app reads like `timings.json`. Browsers without an AAC
+encoder (Firefox, Chromium on Linux) are told so and offered nothing. It works only while the tab is
+open; a chapter it can't finish within the platform's 2-hour lease, or whose audio would be over the
+set's size limit, is given back for someone else. On Android the section links to the FreeAppStore app
+(`freeappstore://native/contribute/<app id>`), which narrates in the background. Community chapters have
+no spoken title clip and are not loudness-normalised as the pipeline's are.
+
 ## Changing a book after it is narrated
 
 Audio is stored by chapter **index** (`<voice>/<slug>/<i>.m4a`), and `plan.py` only checks whether a

@@ -82,7 +82,7 @@ export function ListeningOptions() {
   )
 }
 
-function Toggle({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (on: boolean) => void }) {
+export function Toggle({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (on: boolean) => void }) {
   const id = useId()
   return (
     <label className="flex items-start justify-between gap-4 cursor-pointer">

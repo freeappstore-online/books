@@ -127,12 +127,15 @@ function bookPages(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), edition(), bookPages(), VitePWA(pwaOptions({
     workbox: {
-      // The book pages are for search engines; the installed app opens books from the shell
-      globIgnores: ['read/**'],
+      // The book pages are for search engines; the installed app opens books from the shell.
+      // The narrator (books#66) is downloaded only by listeners who narrate, not precached for all.
+      globIgnores: ['read/**', 'assets/narrator.worker-*'],
       // silence.wav primes the narration <audio> on iOS and is the pause between chapters; it must load offline too (books#7, #37)
       globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2,wav}'],
       runtimeCaching: [...(pwaOptions().workbox.runtimeCaching ?? []), coverCache],
     },
   }))],
+  // The narrator worker loads the model's runtime with import(), so it can't be a classic script
+  worker: { format: 'es' },
   server: { host: true },
 })

@@ -6,7 +6,7 @@ its own `edition/` and takes the engine from `books` ([docs/editions.md](../docs
 
 | File | Holds |
 |---|---|
-| `config.json` | the app's id, name, language, addresses, index.html title and descriptions, and narration (`audio.dataset`, `audio.voice`, `audio.engine`) |
+| `config.json` | the app's id, name, language, addresses, index.html title and descriptions, and narration (`audio.dataset`, `audio.voice`, `audio.engine`, and `audio.communitySet`, the community narration job set, written by the *Community narration jobs* workflow: [docs/adding-books.md](../docs/adding-books.md#community-narration)) |
 | `books/<slug>.toml` | one book each, described below |
 | `sources.lock.json` | the SHA-256 of every source file a book is built from ([docs/catalogue-pipeline.md](../docs/catalogue-pipeline.md)) |
 | `texts/`, `books.json`, `covers/`, `covers.json` | generated from the book files, see below |

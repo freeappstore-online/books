@@ -1,0 +1,64 @@
+name: Community narration jobs
+
+# Queues every chapter that has no narration in the edition's Hugging Face dataset as a community
+# narration job on the platform (books#66, freeappstore-online/platform#727): signed-in listeners'
+# devices narrate them, the platform verifies each upload, and the app plays the accepted ones where
+# the dataset has none. Run by hand; re-running re-sends the same jobs, which changes nothing.
+# Authenticates with this run's GitHub OIDC token: the platform accepts it only from main of the
+# app's own repository. The first run creates the edition's job set and commits its id to
+# edition/config.json (audio.communitySet), then redeploys so the app reads it.
+# dry_run lists the jobs and calls nothing. How it works: docs/adding-books.md#community-narration.
+
+on:
+  workflow_dispatch:
+    inputs:
+      books:
+        description: Space-separated catalogue slugs; empty queues every book in the catalogue
+        default: ''
+      dry_run:
+        description: Only list the jobs; create and send nothing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-narration
+  cancel-in-progress: false
+
+jobs:
+  enqueue:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # commits audio.communitySet on the first run
+      actions: write    # then redeploys the app
+      id-token: write   # the platform's owner credential
+    steps:
+      - uses: actions/checkout@v4
+      # The dataset and voice are the edition's (edition/config.json, books#53)
+      - name: Edition audio settings
+        run: |
+          echo "REPO=$(jq -r .audio.dataset edition/config.json)" >> "$GITHUB_ENV"
+          echo "VOICE=$(jq -r .audio.voice edition/config.json)" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q "$(grep huggingface_hub scripts/audio/requirements.txt)"
+      - name: Queue the chapters without narration
+        env:
+          BOOKS: ${{ inputs.books }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: cd scripts/audio && python community.py ../../edition/texts "$REPO" "$VOICE" $DRY_RUN $BOOKS
+      - name: Commit the new job set and redeploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git diff --quiet edition/config.json && exit 0
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -qm "chore(edition): community narration job set (audio.communitySet)" edition/config.json
+          git pull -q --rebase && git push -q
+          # A push with the workflow token starts no workflow, so deploy by hand
+          gh workflow run deploy.yml --ref main

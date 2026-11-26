@@ -91,6 +91,36 @@ class Manifest(unittest.TestCase):
         self.assertEqual(build_extras(CATALOG, "af_heart", {}, set(), [ALICE]), {})  # no audio, no entry
 
 
+class Community(unittest.TestCase):
+    """Community narration jobs (books#66): one per chapter the dataset lacks, the chapter text as is."""
+
+    def test_jobs_for_chapters_without_audio(self):
+        from community import community_jobs
+        chapters = json.load(open(os.path.join(CATALOG, f"{ALICE}.json")))["chapters"]
+        files = {f"af_heart/{ALICE}/{i}.m4a" for i in range(len(chapters)) if i != 3}
+        jobs, too_long = community_jobs(CATALOG, "af_heart", files, [ALICE])
+        self.assertEqual(jobs, [{"key": f"{ALICE}/3", "input": {"text": chapters[3]["content"]}}])
+        self.assertEqual(too_long, [])
+        # bf_emma has no audio at all: every chapter
+        self.assertEqual(len(community_jobs(CATALOG, "bf_emma", files, [ALICE])[0]), len(chapters))
+
+    def test_a_revised_text_is_keyed_by_its_folder(self):
+        from community import community_jobs
+        slug = "as-i-lay-dying"
+        revision = json.load(open(os.path.join(CATALOG, f"{slug}.json")))["narrationRevision"]
+        jobs, _ = community_jobs(CATALOG, "af_heart", {f"af_heart/{slug}/0.m4a"}, [slug])
+        self.assertEqual(jobs[0]["key"], f"{slug}/{revision}/0")
+
+    def test_batches_stay_under_the_request_limits(self):
+        from community import BATCH_CHARS, BATCH_JOBS, batches
+        jobs = [{"key": f"b/{i}", "input": {"text": "x" * 100_000}} for i in range(100)]
+        sizes = [len(b) for b in batches(jobs)]
+        self.assertEqual(sum(sizes), 100)
+        self.assertTrue(all(n * 100_000 <= BATCH_CHARS for n in sizes))
+        self.assertEqual([len(b) for b in batches([{"key": str(i), "input": {"text": "x"}} for i in range(1001)])],
+                         [BATCH_JOBS, BATCH_JOBS, 1])
+
+
 class Durations(unittest.TestCase):
     def test_duration_is_the_real_audio_length(self):
         with tempfile.TemporaryDirectory() as d:

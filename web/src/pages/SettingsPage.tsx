@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { NavBar } from '../components/NavBar'
 import { ReadingSettings } from '../components/ReadingSettings'
 import { ListeningSettings } from '../components/ListeningSettings'
+import { ContributeSettings } from '../components/ContributeSettings'
 import { getTheme, type Theme } from '../hooks/useTheme'
 import { formatBytes, savedBytes, useOfflineBooks } from '../hooks/offlineBooks'
 import { t } from '../locales'
@@ -22,6 +23,8 @@ export function SettingsPage() {
         />
 
         <ListeningSettings />
+
+        <ContributeSettings />
 
         <div className="bg-surface rounded-xl border border-border p-5 md:p-6">
           <h2 className="text-lg font-semibold mb-2">{t('settings.savedBooks')}</h2>
