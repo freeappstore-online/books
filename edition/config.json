@@ -8,5 +8,10 @@
   "title": "Books — Free Classic Books to Read & Listen",
   "description": "Read classic books free online or save them offline. Enjoy fiction, philosophy, plays and poetry, with audio narration for selected titles. No account needed.",
   "shareDescription": "Read classic books free online, save them offline, and listen to selected narrated titles. No account needed.",
-  "audio": { "dataset": "serge-ivo/books-audio", "voice": "af_heart", "engine": "kokoro" }
+  "audio": {
+    "dataset": "serge-ivo/books-audio",
+    "voice": "af_heart",
+    "engine": "kokoro",
+    "communitySet": "079c673b-09c8-4c84-be8e-e6907108619f"
+  }
 }
