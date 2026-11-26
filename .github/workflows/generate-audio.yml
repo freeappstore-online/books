@@ -92,7 +92,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: sudo apt-get install -y -qq ffmpeg > /dev/null
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
       - run: pip install -q -r scripts/audio/requirements.txt
       - uses: actions/cache@v4
         with:
@@ -130,7 +130,7 @@ jobs:
         with:
           python-version: '3.12'
       # ffprobe measures audio without timings
-      - run: sudo apt-get install -y -qq ffmpeg > /dev/null
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
       - run: pip install -q -r scripts/audio/requirements.txt
       # Shards publish it as they go; this catches a shard that died before its last commit.
       # Manifest mode: publishes what is already in the dataset for the named books.
