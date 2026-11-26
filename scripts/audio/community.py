@@ -54,7 +54,9 @@ def oidc_token() -> str:
 
 def call(token: str, path: str, body: dict) -> dict:
     req = urllib.request.Request(f"{API}/v1{path}", data=json.dumps(body).encode(), method="POST",
-                                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                                          # Cloudflare refuses urllib's default agent (error 1010)
+                                          "User-Agent": "books-community-narration (+https://github.com/freeappstore-online/books)"})
     try:
         with urllib.request.urlopen(req) as res:
             return json.load(res)
