@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { narrationSentences } from '../../src/hooks/narrationText'
+import { narrationSentences } from '@freeappstore/sdk/generation-kokoro'
 
 const split = (text: string) => narrationSentences(text).map(([s, e, p]) => [text.slice(s, e), p])
 
