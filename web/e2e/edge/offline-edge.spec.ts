@@ -274,6 +274,10 @@ test('Update offers new read-along timings without changed audio or text and sav
   await expect(update).toBeVisible()
   hf.requests.length = 0
   await update.click()
+  // Update disappears as soon as Saving replaces it; wait for the completed
+  // index write before checking downloads or taking the browser offline.
+  await expect.poll(async () => Object.keys((await savedIndex(page))[SLUG].files)
+    .filter(url => url.endsWith('.timings.json')).length, { timeout: 15000 }).toBe(N)
   await expect(update).toHaveCount(0, { timeout: 15000 })
   expect(m4as(hf)).toEqual([])
   expect(hf.requests.filter(p => p.endsWith('.timings.json'))).toHaveLength(N)
