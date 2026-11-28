@@ -14,7 +14,7 @@ pnpm dev
 
 ## Playback settings
 
-**Settings → Listening → Speed** offers 0.5× to 3× in 0.05× steps. Tap the speed
+**Settings → Listening → Speed** has a slider from 0.5× to 3× in 0.05× steps, with the current speed shown above it. Tap the speed
 button in the player to choose directly, or use `[` and `]` to adjust one step.
 The speed is remembered on the device.
 

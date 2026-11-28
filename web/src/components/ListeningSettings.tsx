@@ -16,17 +16,28 @@ export function ListeningSettings() {
     <div className="bg-surface rounded-xl border border-border p-5 md:p-6">
       <h2 className="text-lg font-semibold mb-4">{t('listening.title')}</h2>
       <div className="space-y-4">
-        <div>
-          <label htmlFor="speed" className="block text-sm text-text-muted mb-2">{t('listening.speed')}</label>
-          <select
+        <div className="max-w-sm">
+          <div className="flex items-baseline justify-between gap-2">
+            <label htmlFor="speed" className="text-sm text-text-muted">{t('listening.speed')}</label>
+            <output htmlFor="speed" className="text-sm text-text tabular-nums">{t('player.rate', { rate: player.rate })}</output>
+          </div>
+          <input
             id="speed"
+            type="range"
+            min={RATES[0]}
+            max={RATES[RATES.length - 1]}
+            step={0.05}
             value={player.rate}
             onChange={e => player.setRate(Number(e.target.value))}
-            className="min-h-10 bg-page text-text text-base md:text-sm rounded-lg px-3 py-2 border border-border w-full max-w-xs"
-          >
-            {RATES.map(r => <option key={r} value={r}>{t('player.rate', { rate: r })}</option>)}
-          </select>
-          <p className="text-xs text-text-dim mt-2">{t('listening.speedHint')}</p>
+            aria-valuetext={t('player.rate', { rate: player.rate })}
+            aria-describedby="speed-hint"
+            className="block w-full h-10 accent-accent cursor-pointer"
+          />
+          <div className="flex justify-between text-xs text-text-dim tabular-nums" aria-hidden="true">
+            <span>{t('player.rate', { rate: RATES[0] })}</span>
+            <span>{t('player.rate', { rate: RATES[RATES.length - 1] })}</span>
+          </div>
+          <p id="speed-hint" className="text-xs text-text-dim mt-2">{t('listening.speedHint')}</p>
         </div>
         <ListeningOptions />
       </div>
