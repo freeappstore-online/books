@@ -300,9 +300,15 @@ lists it in the job set's public manifest. The app plays those chapters where th
 where both exist the dataset wins (`web/src/hooks/preparedAudio.ts`, `mergeCommunity` in `manifest.ts`).
 
 **Queueing the jobs:** the *Community narration jobs* workflow (`.github/workflows/community-narration.yml`,
-`scripts/audio/community.py`), started by hand from `main`:
+`scripts/audio/community.py`) publishes all eligible missing chapters automatically when catalogue text,
+edition audio settings, narration scripts, or this workflow change on `main`. A daily reconciliation
+at 03:23 UTC also catches missed runs and changes in the audio dataset. Re-running is idempotent:
+existing jobs keep their status, so completed chapters are not queued again.
+
+For an immediate full-catalogue reconciliation, or a preview/selected books, start it from `main`:
 
 ```bash
+gh workflow run community-narration.yml -R freeappstore-online/books --ref main
 gh workflow run community-narration.yml -R freeappstore-online/books -f books="north-and-south" -f dry_run=true
 gh workflow run community-narration.yml -R freeappstore-online/books -f books="north-and-south"
 # books empty: every chapter of the catalogue without narration (about 7,500 chapters, 129M characters on 2026-11-26)

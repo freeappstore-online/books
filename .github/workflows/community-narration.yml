@@ -3,13 +3,23 @@ name: Community narration jobs
 # Queues every chapter that has no narration in the edition's Hugging Face dataset as a community
 # narration job on the platform (books#66, freeappstore-online/platform#727): signed-in listeners'
 # devices narrate them, the platform verifies each upload, and the app plays the accepted ones where
-# the dataset has none. Run by hand; re-running re-sends the same jobs, which changes nothing.
+# the dataset has none. Reconcile on catalogue/publisher changes and daily; re-sending the same
+# jobs changes nothing. Manual runs can restrict the books or preview without publishing.
 # Authenticates with this run's GitHub OIDC token: the platform accepts it only from main of the
 # app's own repository. The first run creates the edition's job set and commits its id to
 # edition/config.json (audio.communitySet), then redeploys so the app reads it.
 # dry_run lists the jobs and calls nothing. How it works: docs/adding-books.md#community-narration.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'edition/texts/**'
+      - 'edition/config.json'
+      - 'scripts/audio/**'
+      - '.github/workflows/community-narration.yml'
+  schedule:
+    - cron: '23 3 * * *'
   workflow_dispatch:
     inputs:
       books:
@@ -31,6 +41,7 @@ jobs:
   enqueue:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write   # commits audio.communitySet on the first run
       actions: write    # then redeploys the app
@@ -50,7 +61,12 @@ jobs:
         env:
           BOOKS: ${{ inputs.books }}
           DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
-        run: cd scripts/audio && python community.py ../../edition/texts "$REPO" "$VOICE" $DRY_RUN $BOOKS
+        run: |
+          read -r -a book_slugs <<< "$BOOKS"
+          options=()
+          if [ -n "$DRY_RUN" ]; then options+=("--dry-run"); fi
+          cd scripts/audio
+          python -u community.py ../../edition/texts "$REPO" "$VOICE" "${options[@]}" "${book_slugs[@]}"
       - name: Commit the new job set and redeploy
         env:
           GH_TOKEN: ${{ github.token }}
