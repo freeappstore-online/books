@@ -13,7 +13,7 @@ import { LOCALE, t } from '../locales'
 import { coverUrl } from '../components/BookCover'
 import type { AudioChapter } from './useAudioPlayer'
 import {
-  COMMUNITY_MANIFEST_URL, MANIFEST_URL, addCommunity, chapterHasTimings, getManifestExtras, parseManifest, preparedCount,
+  COMMUNITY_MANIFEST_URL, MANIFEST_URL, addCommunity, chapterHasTimings, getManifestExtras, parseManifest,
   preparedTitleUrl, preparedUrl,
   preparedTimingsUrl, titleSeconds, usePreparedManifest, type ManifestExtras, type PreparedManifest,
 } from './preparedAudio'
@@ -113,7 +113,8 @@ const isTitle = (url: string) => url.endsWith('.title.m4a')
 
 /** Narration chapters saved for this book. */
 export function savedAudioChapters(book: SavedBook): number {
-  return Object.keys(book.files).filter(url => url.endsWith('.m4a') && !isTitle(url)).length
+  return Object.keys(book.files).filter(url => (url.endsWith('.m4a') && !isTitle(url))
+    || /\/generation\/artifacts\/[^/?]+(?:\?[^#]*)?$/.test(url)).length
 }
 
 /** The saved copy of a URL, if this device has one. */
@@ -370,10 +371,17 @@ export function checkSavedText(slug: string) {
 /** What Update would bring to a saved book, in words, or null when it is up to date. */
 export function updateReason(slug: string, book: SavedBook, manifest: PreparedManifest): string | null {
   if (missingFiles[slug]?.size) return t('update.missing')
-  const newChapters = book.voice ? preparedCount(manifest, slug, book.voice) - savedAudioChapters(book) : 0
+  const newChapters = book.voice ? (manifest[book.voice]?.[slug] ?? [])
+    .filter((d, i) => d != null && !(preparedUrl(slug, i, book.voice!) in book.files)).length : 0
   if (newChapters > 0) return t('update.newChapters', { count: newChapters })
   if (textChanged[slug]) return t('update.text')
   const voice = book.voice
+  // A format-2 save can predate timings without gaining any new audio/text.
+  // Only explicit timing availability should offer an update: legacy manifests
+  // without extras mean "unknown", and would otherwise offer Update forever.
+  if (voice && (manifest[voice]?.[slug] ?? []).some((d, i) => d != null
+    && chapterHasTimings(getManifestExtras() ?? {}, slug, i, voice)
+    && !(preparedTimingsUrl(slug, i, voice) in book.files))) return t('update.readAlong')
   if (voice && (manifest[voice]?.[slug] ?? []).some((d, i) => d !== null
     && titleSeconds(getManifestExtras(), slug, i, voice) !== null && !(preparedTitleUrl(slug, i, voice) in book.files))) return t('update.titles')
   if ((book.format ?? 1) < SAVE_FORMAT) return t(book.voice ? 'update.readAlong' : 'update.latestText')

@@ -1,9 +1,8 @@
 /**
  * Read-along: where in the chapter text the audio is (books#20).
  *
- * The prepared narration ships sentence timings next to each chapter's audio;
- * the spoken word inside a sentence is estimated by spreading the sentence's
- * time over its words by syllable count.
+ * Published word timings take priority when present. Sentence-only recordings
+ * estimate the spoken word by spreading the sentence's time by syllable count.
  */
 import { chapterHasTimings, getManifestExtras, preparedTimingsUrl } from './preparedAudio'
 import { fetchSavedOr } from './offlineBooks'
@@ -20,10 +19,37 @@ export interface ReadAlongPosition {
 /** [charStart, charEnd, startSec, endSec] */
 export type TimingSegment = [number, number, number, number]
 
-const timingsCache = new Map<string, Promise<TimingSegment[] | null>>()
+export interface TimingData {
+  segments: TimingSegment[]
+  words?: TimingSegment[]
+}
+
+/** Reject corrupt/unordered metadata rather than highlighting the wrong offsets. */
+export function parseTimings(raw: unknown, textLength = Infinity): TimingData | null {
+  const data = raw as Partial<TimingData> | null
+  const valid = (value: unknown): value is TimingSegment[] => Array.isArray(value) && value.length > 0
+    && value.every((s, i) => Array.isArray(s) && s.length === 4 && s.every(Number.isFinite)
+      && Number.isInteger(s[0]) && Number.isInteger(s[1]) && s[0] >= 0 && s[1] > s[0] && s[1] <= textLength
+      && s[2] >= 0 && s[3] > s[2]
+      && (i === 0 || (s[0] >= value[i - 1][1] && s[2] >= value[i - 1][3] - 0.001)))
+  if (!valid(data?.segments)) return null
+  const result: TimingData = { segments: data.segments }
+  if (valid(data.words)) {
+    let sentence = 0
+    const contained = data.words.every(w => {
+      while (sentence < data.segments!.length - 1 && w[0] >= data.segments![sentence][1]) sentence++
+      const s = data.segments![sentence]
+      return w[0] >= s[0] && w[1] <= s[1] && w[2] >= s[2] - 0.001 && w[3] <= s[3] + 0.001
+    })
+    if (contained) result.words = data.words
+  }
+  return result
+}
+
+const timingsCache = new Map<string, Promise<TimingData | null>>()
 
 /** Sentence timings of a narrated chapter; null when it has none. */
-export function loadTimings(slug: string, chapterIdx: number): Promise<TimingSegment[] | null> {
+export function loadTimings(slug: string, chapterIdx: number, textLength = Infinity): Promise<TimingData | null> {
   // The manifests say which chapters have timings: no request (and no console 404) for the others
   if (!chapterHasTimings(getManifestExtras(), slug, chapterIdx)) return Promise.resolve(null)
   const url = preparedTimingsUrl(slug, chapterIdx)
@@ -35,7 +61,7 @@ export function loadTimings(slug: string, chapterIdx: number): Promise<TimingSeg
     const retry = () => { timingsCache.delete(url); return null }
     p = fetchSavedOr(url)
       .then(r => (r.ok ? r.json() : r.status === 404 ? null : retry()))
-      .then(d => (Array.isArray(d?.segments) && d.segments.length > 0 ? d.segments as TimingSegment[] : null))
+      .then(d => parseTimings(d, textLength))
       .catch(retry)
     timingsCache.set(url, p)
   }
@@ -95,10 +121,21 @@ function lastAtOrBefore<T>(items: T[], x: number, key: (item: T) => number): num
 }
 
 /** Sentence and estimated word spoken at `t` seconds, from the timings. */
-export function positionFromTimings(text: string, segments: TimingSegment[], t: number): { sentence: CharRange; word: CharRange | null } {
+export function positionFromTimings(text: string, segments: TimingSegment[], t: number, wordTimings?: TimingSegment[]): { sentence: CharRange; word: CharRange | null } {
   // A seek to a sentence's start can land a sample before it
   const seg = segments[lastAtOrBefore(segments, t + 0.02, s => s[2])]
   const sentence: CharRange = [seg[0], seg[1]]
+  if (wordTimings?.length) {
+    const w = wordTimings[lastAtOrBefore(wordTimings, t + 0.002, w => w[2])]
+    if (w[0] >= seg[0] && w[1] <= seg[1]) {
+      return { sentence, word: t + 0.002 >= w[2] && t < w[3] ? [w[0], w[1]] : null }
+    }
+    // A partially aligned recording can still use sentence estimates elsewhere.
+    let first = lastAtOrBefore(wordTimings, seg[0], w => w[0])
+    if (wordTimings[first][0] < seg[0]) first++
+    const next = wordTimings[first]
+    if (next && next[0] >= seg[0] && next[1] <= seg[1]) return { sentence, word: null }
+  }
   const ws = words(text, sentence)
   if (ws.length === 0) return { sentence, word: null }
   const total = ws.reduce((sum, w) => sum + w.weight, 0)
@@ -113,11 +150,17 @@ export function positionFromTimings(text: string, segments: TimingSegment[], t: 
 }
 
 /** Seconds at which the word at char `offset` is spoken, from the timings. */
-export function timeAtChar(text: string, segments: TimingSegment[], offset: number): number {
+export function timeAtChar(text: string, segments: TimingSegment[], offset: number, wordTimings?: TimingSegment[]): number {
   // The sentence holding the offset, or the next one when it falls between sentences
   let i = lastAtOrBefore(segments, offset, s => s[0])
   if (offset >= segments[i][1] && i + 1 < segments.length) i++
   const seg = segments[i]
+  if (wordTimings?.length) {
+    let j = lastAtOrBefore(wordTimings, offset, w => w[0])
+    if (offset >= wordTimings[j][1] && j + 1 < wordTimings.length) j++
+    const w = wordTimings[j]
+    if (w[0] >= seg[0] && w[1] <= seg[1]) return w[2]
+  }
   const ws = words(text, [seg[0], seg[1]])
   const total = ws.reduce((sum, w) => sum + w.weight, 0)
   let before = 0
@@ -129,6 +172,6 @@ export function timeAtChar(text: string, segments: TimingSegment[], offset: numb
 }
 
 /** Seconds at which char `offset` is spoken: from the timings, else by its share of the chapter. */
-export function timeForChar(text: string, segments: TimingSegment[] | null, offset: number, duration: number): number {
-  return segments ? timeAtChar(text, segments, offset) : offset / Math.max(1, text.length) * duration
+export function timeForChar(text: string, segments: TimingSegment[] | null, offset: number, duration: number, wordTimings?: TimingSegment[]): number {
+  return segments ? timeAtChar(text, segments, offset, wordTimings) : offset / Math.max(1, text.length) * duration
 }

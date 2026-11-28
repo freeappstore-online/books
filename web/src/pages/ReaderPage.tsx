@@ -54,6 +54,12 @@ const CHAPTERS_VISIBLE_KEY = 'bp-chapters-visible'
 
 export function ReaderPage() {
   const { slug } = useParams<{ slug: string }>()
+  // Each book owns its chapter state, annotations and pending fetches. Reusing
+  // them for a new slug can save the old book's positions against the new one.
+  return <BookReader key={slug} slug={slug} />
+}
+
+function BookReader({ slug }: { slug: string | undefined }) {
   const catalogBook = CATALOG.find(b => b.id === slug)
   const [chapters, setChapters] = useState<AudioChapter[]>([])
   const [activeChapter, setActiveChapter] = useState<string | null>(null)
@@ -87,6 +93,7 @@ export function ReaderPage() {
   const articleRef = useRef<HTMLElement>(null)
   // Saved scroll fraction to restore once the chapter has rendered
   const pendingScrollRef = useRef(0)
+  const loadGeneration = useRef(0)
 
   // Position the new chapter after its text has reached the DOM, before painting or
   // saving progress. A pre-render smooth scroll can be cancelled by the chapter's
@@ -115,6 +122,7 @@ export function ReaderPage() {
   useEffect(() => {
     if (!slug) return
     loadBook(slug)
+    return () => { loadGeneration.current++ }
   }, [slug])
 
   // Highlights follow their text when the book's text changed (an update, or a newer copy online)
@@ -190,15 +198,16 @@ export function ReaderPage() {
 
   async function loadBook(bookSlug: string) {
     await loadFromCatalog(bookSlug)
-    setLoading(false)
   }
 
   async function loadFromCatalog(bookSlug: string) {
+    const generation = ++loadGeneration.current
     const catalogBook = CATALOG.find(b => b.id === bookSlug)
-    if (!catalogBook) return
+    if (!catalogBook) { setLoading(false); return }
     try {
       // A book saved for offline opens from this device (books#7)
       const chaptersList = await fetchChapters(catalogBook.contentPath)
+      if (generation !== loadGeneration.current) return
       setChapters(chaptersList)
       const saved = getProgress(bookSlug)
       // The chapter the player is on now isn't one to follow to
@@ -220,9 +229,12 @@ export function ReaderPage() {
       pendingScrollRef.current = saved?.chapterIdx === startIdx ? saved.scroll ?? 0 : 0
       if (chaptersList.length > 0) setActiveChapter(chaptersList[startIdx].id)
     } catch {
+      if (generation !== loadGeneration.current) return
       setNotSavedOffline(!navigator.onLine)
       setChapters([{ id: 'excerpt', title: t('reader.excerpt'), content: catalogBook.excerpt }])
       setActiveChapter('excerpt')
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false)
     }
   }
 

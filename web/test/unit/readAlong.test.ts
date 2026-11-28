@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  loadTimings, positionFromTimings, sentenceRanges, timeAtChar, timeForChar, wordWeight,
+  loadTimings, parseTimings, positionFromTimings, sentenceRanges, timeAtChar, timeForChar, wordWeight,
   type CharRange, type TimingSegment,
 } from '../../src/hooks/readAlong'
 import { loadPreparedManifest } from '../../src/hooks/preparedAudio'
@@ -155,6 +155,39 @@ describe('timeAtChar / timeForChar', () => {
   })
 })
 
+describe('published word timestamps', () => {
+  const text = 'Slow words. Next.'
+  const segments: TimingSegment[] = [[0, 11, 0, 6], [12, 17, 8, 9]]
+  const words: TimingSegment[] = [[0, 4, 0.3, 4], [5, 11, 4.5, 5.5], [12, 17, 8.2, 8.8]]
+
+  it('uses measured word onsets and durations, including silence and seek targets', () => {
+    const data = parseTimings({ segments, words }, text.length)!
+    expect(data.words).toEqual(words)
+    expect(positionFromTimings(text, data.segments, 3.5, data.words).word).toEqual([0, 4])
+    expect(positionFromTimings(text, data.segments, 4.25, data.words).word).toBeNull()
+    expect(positionFromTimings(text, data.segments, 4.7, data.words).word).toEqual([5, 11])
+    expect(positionFromTimings(text, data.segments, 8.1, data.words).word).toBeNull()
+    expect(timeForChar(text, segments, 7, 9, words)).toBe(4.5)
+    expect(timeAtChar(text, segments, 12, words)).toBe(8.2)
+  })
+
+  it('keeps sentence estimates where word timestamps are absent or invalid', () => {
+    expect(parseTimings({ segments })).toEqual({ segments })
+    const partial = words.slice(0, 2)
+    expect(positionFromTimings(text, segments, 8.5, partial).word).toEqual([12, 17])
+    expect(parseTimings({ segments, words: [[0, 4, 0, 99]] })).toEqual({ segments })
+  })
+
+  it.each([
+    null, {}, { segments: [] }, { segments: [[0, 5, 2, 1]] },
+    { segments: [[0, 5, 0, Infinity]] }, { segments: [[0, 30, 0, 1]] },
+    { segments: [[0, 5, 0, 2], [3, 7, 2, 3]] },
+    { segments: [[0, 5, 0, 2], [6, 9, 1, 3]] },
+  ])('rejects invalid timing metadata %j', raw => {
+    expect(parseTimings(raw, text.length)).toBeNull()
+  })
+})
+
 describe('loadTimings', () => {
   const ok = { ok: true, status: 200, json: async () => ({ v: 1, segments: [[0, 5, 0, 1]] }) }
 
@@ -166,8 +199,8 @@ describe('loadTimings', () => {
     vi.stubGlobal('fetch', fetch)
     expect(await loadTimings('retry-book', 0)).toBeNull()
     expect(await loadTimings('retry-book', 0)).toBeNull()
-    expect(await loadTimings('retry-book', 0)).toEqual([[0, 5, 0, 1]])
-    expect(await loadTimings('retry-book', 0)).toEqual([[0, 5, 0, 1]])
+    expect(await loadTimings('retry-book', 0)).toEqual({ segments: [[0, 5, 0, 1]] })
+    expect(await loadTimings('retry-book', 0)).toEqual({ segments: [[0, 5, 0, 1]] })
     expect(fetch).toHaveBeenCalledTimes(3)
 
     fetch.mockResolvedValue({ ok: false, status: 404 })
@@ -184,7 +217,7 @@ describe('loadTimings', () => {
     vi.stubGlobal('fetch', fetch)
     await loadPreparedManifest()
     expect(await loadTimings('without-timings', 0)).toBeNull()
-    expect(await loadTimings('with-timings', 0)).toEqual([[0, 5, 0, 1]])
+    expect(await loadTimings('with-timings', 0)).toEqual({ segments: [[0, 5, 0, 1]] })
     expect(fetch.mock.calls.map(([url]) => url.split('/').slice(-2).join('/'))).toEqual(['main/manifest.json', 'with-timings/0.timings.json'])
     vi.unstubAllGlobals()
   })

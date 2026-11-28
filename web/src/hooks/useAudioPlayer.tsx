@@ -17,7 +17,7 @@ import {
 } from './audioStorage'
 import {
   loadTimings, positionFromTimings, timeForChar,
-  type CharRange, type ReadAlongPosition, type TimingSegment,
+  type CharRange, type ReadAlongPosition, type TimingData,
 } from './readAlong'
 
 /** 0.5–3x in consistent 0.05x steps; integer division avoids cumulative rounding. */
@@ -133,7 +133,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const narrationRef = useRef<Narration | null>(null)
   const pendingNarrationRef = useRef<AbortController | null>(null)
   // The chapter playing, for read-along and seeking to a word (timings undefined while loading)
-  const trackRef = useRef<{ audio: HTMLAudioElement; idx: number; text: string; timings?: TimingSegment[] | null } | null>(null)
+  const trackRef = useRef<{ audio: HTMLAudioElement; idx: number; text: string; timings?: TimingData | null } | null>(null)
 
   useEffect(() => () => { pendingNarrationRef.current?.abort(); narrationRef.current?.stop() }, [])
 
@@ -181,7 +181,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const text = b.chapters[idx].content
     const track: NonNullable<typeof trackRef.current> = { audio, idx, text }
     trackRef.current = track
-    loadTimings(b.slug, idx).then(t => { track.timings = t })
+    loadTimings(b.slug, idx, text.length).then(t => { track.timings = t })
     // currentTime has no change event finer than timeupdate (4 Hz): read it each frame.
     // setReadAlong only notifies when the word or sentence changes.
     const tick = () => {
@@ -194,7 +194,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       // A chapter without timings plays without read-along: a guessed highlight drifts (books#31)
       if (audio.ended || track.timings === null) return
       if (audio.readyState > 0 && !audio.seeking && track.timings) {
-        setReadAlong({ chapterIdx: idx, ...positionFromTimings(text, track.timings, audio.currentTime) })
+        setReadAlong({ chapterIdx: idx, ...positionFromTimings(text, track.timings.segments, audio.currentTime, track.timings.words) })
       }
       requestAnimationFrame(tick)
     }
@@ -240,9 +240,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     savePosition(b.slug, idx)
     if (charOffset !== undefined) {
       const text = b.chapters[idx].content
-      const timings = await loadTimings(b.slug, idx)
+      const timings = await loadTimings(b.slug, idx, text.length)
       if (gen !== genRef.current) return
-      seekNarration(preparedUrl(b.slug, idx), timeForChar(text, timings, charOffset, seconds), seconds)
+      seekNarration(preparedUrl(b.slug, idx), timeForChar(text, timings?.segments ?? null, charOffset, seconds, timings?.words), seconds)
     }
     const fail = (err: unknown) => {
       if (gen !== genRef.current) return
@@ -348,7 +348,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const track = trackRef.current
     if (charOffset !== undefined && bookRef.current?.slug === newBook.slug && track?.idx === startChapter
       && !narrationIntroPlaying() && track.audio.readyState > 0 && track.timings !== undefined) {
-      track.audio.currentTime = timeForChar(track.text, track.timings, charOffset, track.audio.duration)
+      track.audio.currentTime = timeForChar(track.text, track.timings?.segments ?? null, charOffset, track.audio.duration, track.timings?.words)
       return
     }
     // A revised catalogue can have fewer chapters than the saved position.

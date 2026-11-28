@@ -260,6 +260,30 @@ test('Update: new chapters, an older save format, changed text', async ({ contex
   expect(m4as(hf)).toEqual([])
 })
 
+test('Update offers new read-along timings without changed audio or text and saves them for offline playback', async ({ context, baseURL, page }) => {
+  const hf = await stubHuggingFace(context, baseURL!, {
+    inline: true, durations: narrated(), extras: { [SLUG]: { timings: false } },
+  })
+  await swReady(page)
+  await openReader(page)
+  await saveAlice(page)
+  expect(Object.keys((await savedIndex(page))[SLUG].files).some(url => url.endsWith('.timings.json'))).toBe(false)
+  hf.opts.extras = { [SLUG]: { timings: true } }
+  await page.goto('/library')
+  const update = page.getByRole('button', { name: /^Update \(read-along\)/ })
+  await expect(update).toBeVisible()
+  hf.requests.length = 0
+  await update.click()
+  await expect(update).toHaveCount(0, { timeout: 15000 })
+  expect(m4as(hf)).toEqual([])
+  expect(hf.requests.filter(p => p.endsWith('.timings.json'))).toHaveLength(N)
+  await openReader(page)
+  await setOffline(context, hf, true)
+  await page.reload()
+  await headerPlay(page).click()
+  await expect(page.locator('[data-readalong="word"]').first()).toBeVisible()
+})
+
 test.describe('storage notes', () => {
   test.describe('on an iPhone', () => {
     test.use({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' })

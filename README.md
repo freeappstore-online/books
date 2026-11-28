@@ -1,6 +1,6 @@
 # Books
 
-Listen to 130+ classic audiobooks with text-to-speech. Read or listen — your progress saves automatically.
+Read classic books free, online or offline, with audio narration for selected titles. Your progress saves automatically.
 
 **Category:** Learning  
 **Live:** [books.freeappstore.online](https://books.freeappstore.online)
@@ -36,6 +36,8 @@ button provides quick timer choices, and its Listening panel has the full contro
 **Scroll with audio** keeps the highlighted words visible by default. Scrolling
 the reading page manually suspends following until **Follow audio** is pressed.
 The preference is saved on the device. Read-along requires published timing data.
+Word timestamps, when published, drive highlighting and tap-to-seek directly;
+sentence-only recordings estimate word positions. See [the timing format](docs/read-along-timings.md).
 
 ## Tests
 
