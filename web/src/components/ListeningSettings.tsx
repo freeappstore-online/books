@@ -6,6 +6,7 @@ import {
   CHAPTER_PAUSES, setChapterPause, setContinueChapters, setReadTitles,
   useChapterPause, useContinueChapters, useReadTitles, useVolumeBoost,
   setFollowAudio, useFollowAudio,
+  setSkipPreface, useSkipPreface,
 } from '../hooks/usePreferences'
 import { t } from '../locales'
 
@@ -54,6 +55,12 @@ export function ListeningOptions() {
 
   return (
     <div className="space-y-4">
+      <Toggle
+        label={t('listening.skipPreface')}
+        hint={t('listening.skipPrefaceHint')}
+        checked={useSkipPreface()}
+        onChange={setSkipPreface}
+      />
       <Toggle
         label={t('listening.readTitles')}
         hint={t('listening.readTitlesHint')}

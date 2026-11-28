@@ -42,6 +42,7 @@ const PAUSE_KEY = 'bp-chapter-pause'
 const CONTINUE_KEY = 'bp-continue-chapters'
 const BOOST_KEY = 'bp-volume-boost'
 const FOLLOW_KEY = 'bp-follow-audio'
+const SKIP_PREFACE_KEY = 'bp-skip-preface'
 
 /** Seconds of silence between chapters on auto-advance; 0 is off. */
 export const CHAPTER_PAUSES = [0, 1.5, 3, 5]
@@ -70,6 +71,10 @@ export function setContinueChapters(on: boolean) { write(CONTINUE_KEY, on) }
 export function getFollowAudio(): boolean { return readFlag(FOLLOW_KEY, true) }
 export function setFollowAudio(on: boolean) { write(FOLLOW_KEY, on) }
 
+/** Open and start books after their introductory sections; explicit chapter choices still work. */
+export function getSkipPreface(): boolean { return readFlag(SKIP_PREFACE_KEY, false) }
+export function setSkipPreface(on: boolean) { write(SKIP_PREFACE_KEY, on) }
+
 /** Louder playback; applied by narration.ts, set through the player (useAudioPlayer). */
 export function getVolumeBoost(): boolean { return readFlag(BOOST_KEY, false) }
 export function setVolumeBoostPref(on: boolean) { write(BOOST_KEY, on) }
@@ -95,4 +100,5 @@ export const useReadTitles = () => usePreference(getReadTitles)
 export const useChapterPause = () => usePreference(getChapterPause)
 export const useContinueChapters = () => usePreference(getContinueChapters)
 export const useFollowAudio = () => usePreference(getFollowAudio)
+export const useSkipPreface = () => usePreference(getSkipPreface)
 export const useVolumeBoost = () => usePreference(getVolumeBoost)

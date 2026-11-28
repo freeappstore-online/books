@@ -7,7 +7,8 @@ import {
   chapterSeconds, getLoadedManifest, getManifestExtras, isNarrated, loadPreparedManifest, preparedUrl, titleSeconds,
   type PreparedManifest,
 } from './preparedAudio'
-import { getChapterPause, getContinueChapters, getReadTitles } from './usePreferences'
+import { getChapterPause, getContinueChapters, getReadTitles, getSkipPreface } from './usePreferences'
+import { bookStart } from './bookStart'
 import { t } from '../locales'
 import { playableManifest } from './offlineBooks'
 import {
@@ -351,7 +352,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     // A revised catalogue can have fewer chapters than the saved position.
-    const idx = Math.min(Math.max(0, startChapter ?? loadPosition(newBook.slug)), newBook.chapters.length - 1)
+    const saved = Math.min(loadPosition(newBook.slug), newBook.chapters.length - 1)
+    const start = startChapter ?? bookStart(newBook.chapters, saved, getSkipPreface())
+    const idx = Math.min(Math.max(0, start), newBook.chapters.length - 1)
     setBook(newBook)
     bookRef.current = newBook
     updateHistory(newBook, idx)

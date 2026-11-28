@@ -121,6 +121,8 @@
   "listening.speed": "Speed",
   "listening.speedHint": "Adjust in 0.05x steps, from 0.5x to 3x.",
   "listening.readTitles": "Read chapter titles",
+  "listening.skipPreface": "Skip preface",
+  "listening.skipPrefaceHint": "Open and start books at the first chapter after introductory sections. Later progress is kept. You can still choose the preface from the chapter list.",
   "listening.readTitlesHint": "Hear each chapter's title before it starts.",
   "listening.pause": "Pause between chapters",
   "listening.pauseHint": "A moment of quiet before the next chapter starts.",

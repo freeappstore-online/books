@@ -18,6 +18,13 @@ pnpm dev
 button in the player to choose directly, or use `[` and `]` to adjust one step.
 The speed is remembered on the device.
 
+**Skip preface** is off by default. Turn it on to open or start a book at its first
+chapter after introductory sections; progress in later chapters is preserved.
+It uses section titles (including prefaces, introductions and dedications), and
+also supports books organized into staves, acts, or unnumbered stories and poems.
+The chapter list and bookmark links still let you choose the preface explicitly.
+The preference is saved on the device and is also available in the player's Listening panel.
+
 In **Settings → Listening**, **Continue to the next chapter** is on by default:
 playback continues through the book's narrated chapters. Turn it off to stop after
 each chapter. A sleep timer can stop playback earlier: choose a preset, 1–1,440

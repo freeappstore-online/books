@@ -17,7 +17,8 @@ import {
 import { sentenceRanges } from '../hooks/readAlong'
 import { getNarrationTime } from '../hooks/narration'
 import { loadHistory } from '../hooks/audioStorage'
-import { useReaderFontSize } from '../hooks/usePreferences'
+import { getSkipPreface, useReaderFontSize } from '../hooks/usePreferences'
+import { bookStart } from '../hooks/bookStart'
 import { readLocal, writeLocal } from '../hooks/localStorage'
 import { TextSizeControls } from '../components/TextSizeControls'
 import { saveProgress, getProgress, setFinished, useFinished } from '../hooks/useReadingProgress'
@@ -215,7 +216,7 @@ export function ReaderPage() {
       const lastIdx = player.book?.slug === bookSlug && player.playing ? player.chapterIdx
         : heard && heard.timestamp > (saved?.lastRead ?? 0) ? heard.chapterIdx
         : saved?.chapterIdx ?? 0
-      const startIdx = lastIdx < chaptersList.length ? lastIdx : 0
+      const startIdx = bookStart(chaptersList, lastIdx, getSkipPreface() && !(player.book?.slug === bookSlug && player.playing))
       pendingScrollRef.current = saved?.chapterIdx === startIdx ? saved.scroll ?? 0 : 0
       if (chaptersList.length > 0) setActiveChapter(chaptersList[startIdx].id)
     } catch {

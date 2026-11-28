@@ -121,6 +121,8 @@
   "listening.speed": "Velocidad",
   "listening.speedHint": "Ajusta en pasos de 0,05x, desde 0,5x hasta 3x.",
   "listening.readTitles": "Leer los títulos de los capítulos",
+  "listening.skipPreface": "Omitir prefacio",
+  "listening.skipPrefaceHint": "Abre y empieza los libros en el primer capítulo después de las secciones introductorias. Se conserva el progreso posterior. Puedes elegir el prefacio en la lista de capítulos.",
   "listening.readTitlesHint": "Escucha el título de cada capítulo antes de que empiece.",
   "listening.pause": "Pausa entre capítulos",
   "listening.pauseHint": "Un momento de silencio antes de que empiece el siguiente capítulo.",
