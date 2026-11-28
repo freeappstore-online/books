@@ -19,7 +19,8 @@ import {
   type CharRange, type ReadAlongPosition, type TimingSegment,
 } from './readAlong'
 
-export const RATES = [0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3]
+/** 0.5–3x in consistent 0.05x steps; integer division avoids cumulative rounding. */
+export const RATES = Array.from({ length: 51 }, (_, i) => (10 + i) / 20)
 
 /** Sleep after this many minutes of playback, or at the end of the chapter. */
 export type SleepChoice = number | 'chapter'

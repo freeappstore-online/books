@@ -61,10 +61,10 @@ test('reader: Space, K, arrows, [ ], Shift+arrows control the narration', async 
   expect(await jumpOf(page, () => page.keyboard.press('ArrowLeft')), '← back 15 s').toBeCloseTo(-15, 0)
 
   await page.keyboard.press(']')
-  await expect.poll(async () => (await audio(page))!.rate, { message: '] faster' }).toBe(1.1)
+  await expect.poll(async () => (await audio(page))!.rate, { message: '] faster' }).toBe(1.05)
   await page.keyboard.press('[')
   await page.keyboard.press('[')
-  await expect.poll(async () => (await audio(page))!.rate, { message: '[ slower' }).toBe(0.9)
+  await expect.poll(async () => (await audio(page))!.rate, { message: '[ slower' }).toBe(0.95)
   await page.keyboard.press(']')
 
   await expect(page.getByLabel('Position in chapter')).toHaveAttribute('aria-valuetext', /^\d+:\d\d of \d+:\d\d$/)

@@ -37,6 +37,7 @@ test.describe('playback', () => {
 
     const speed = page.getByRole('button', { name: /^Speed / })
     await speed.click()
+    await page.getByRole('menuitemradio', { name: '1.25x', exact: true }).click()
     await expect.poll(async () => (await audio(page))!.rate).toBe(1.25)
     expect((await audio(page))!.paused).toBe(false)
   })

@@ -6,36 +6,22 @@ import { t } from '../locales'
 
 /** The player bar's speed and sleep timer buttons, each with its popover menu. */
 
-/** Speeds a tap cycles through; long-press or right-click lists every rate. */
-const QUICK_RATES = [0.75, 1, 1.25, 1.5, 2]
-
 export function SpeedButton({ rate, setRate }: { rate: number; setRate: (r: number) => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const close = () => { setMenuOpen(false); buttonRef.current?.focus() }
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const longPressed = useRef(false)
-
-  function cycle() {
-    if (longPressed.current) { longPressed.current = false; return }
-    setRate(QUICK_RATES.find(r => r > rate) ?? QUICK_RATES[0])
-  }
 
   return (
     <div className="relative">
       <button
         ref={buttonRef}
-        onClick={cycle}
-        onPointerDown={() => {
-          longPressed.current = false
-          pressTimer.current = setTimeout(() => { longPressed.current = true; setMenuOpen(true) }, 500)
-        }}
-        onPointerUp={() => clearTimeout(pressTimer.current)}
-        onPointerLeave={() => clearTimeout(pressTimer.current)}
+        onClick={() => setMenuOpen(!menuOpen)}
         onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}
         className="min-w-[40px] sm:min-w-11 h-[40px] px-1 sm:px-1.5 text-xs font-semibold tabular-nums text-text-muted hover:text-text transition select-none [-webkit-touch-callout:none]"
         title={t('player.speedTitle')}
         aria-label={`${t('listening.speed')} ${t('player.rate', { rate })}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
         aria-keyshortcuts="[ ]"
       >
         {t('player.rate', { rate })}

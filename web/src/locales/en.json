@@ -119,6 +119,7 @@
 
   "listening.title": "Listening",
   "listening.speed": "Speed",
+  "listening.speedHint": "Adjust in 0.05x steps, from 0.5x to 3x.",
   "listening.readTitles": "Read chapter titles",
   "listening.readTitlesHint": "Hear each chapter's title before it starts.",
   "listening.pause": "Pause between chapters",
@@ -176,7 +177,7 @@
   "player.position": "Position in chapter",
   "player.positionValue": "{time} of {duration}",
   "player.rate": "{rate}x",
-  "player.speedTitle": "Speed (hold for all speeds; [ and ] step it)",
+  "player.speedTitle": "Choose speed ([ and ] adjust in 0.05x steps)",
   "player.errorOfflineRest": "You're offline, and the rest of this book isn't saved on this device.",
   "player.errorChapter": "This chapter couldn't be played. Press Play to try again.",
   "player.errorConnection": "Connection lost. Press Play when you're back online.",

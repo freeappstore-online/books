@@ -26,6 +26,7 @@ export function ListeningSettings() {
           >
             {RATES.map(r => <option key={r} value={r}>{t('player.rate', { rate: r })}</option>)}
           </select>
+          <p className="text-xs text-text-dim mt-2">{t('listening.speedHint')}</p>
         </div>
         <ListeningOptions />
       </div>

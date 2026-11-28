@@ -119,6 +119,7 @@
 
   "listening.title": "Escucha",
   "listening.speed": "Velocidad",
+  "listening.speedHint": "Ajusta en pasos de 0,05x, desde 0,5x hasta 3x.",
   "listening.readTitles": "Leer los títulos de los capítulos",
   "listening.readTitlesHint": "Escucha el título de cada capítulo antes de que empiece.",
   "listening.pause": "Pausa entre capítulos",
@@ -176,7 +177,7 @@
   "player.position": "Posición en el capítulo",
   "player.positionValue": "{time} de {duration}",
   "player.rate": "{rate}x",
-  "player.speedTitle": "Velocidad (mantén presionado para ver todas; [ y ] la cambian)",
+  "player.speedTitle": "Elegir velocidad ([ y ] la ajustan en pasos de 0,05x)",
   "player.errorOfflineRest": "Estás sin conexión y el resto de este libro no está guardado en este dispositivo.",
   "player.errorChapter": "No se pudo reproducir este capítulo. Presiona Reproducir para intentarlo de nuevo.",
   "player.errorConnection": "Se perdió la conexión. Presiona Reproducir cuando vuelvas a estar en línea.",

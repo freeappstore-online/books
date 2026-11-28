@@ -14,6 +14,10 @@ pnpm dev
 
 ## Playback settings
 
+**Settings → Listening → Speed** offers 0.5× to 3× in 0.05× steps. Tap the speed
+button in the player to choose directly, or use `[` and `]` to adjust one step.
+The speed is remembered on the device.
+
 In **Settings → Listening**, **Continue to the next chapter** is on by default:
 playback continues through the book's narrated chapters. Turn it off to stop after
 each chapter. A sleep timer can stop playback earlier: choose a preset, 1–1,440

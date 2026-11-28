@@ -1,0 +1,50 @@
+import { test, expect, stubHuggingFace, audio, bar, expectPlaying, headerPlay, SLUG } from './fixtures'
+
+test('fine speed choices work in Settings and the player, persist, and keep playing', async ({ context, baseURL, page }) => {
+  await stubHuggingFace(context, baseURL!)
+  await page.goto('/settings')
+  const speed = page.getByLabel('Speed', { exact: true })
+  await speed.selectOption('0.85')
+  await page.reload()
+  await expect(speed).toHaveValue('0.85')
+  await page.goto(`/read/${SLUG}`)
+  await headerPlay(page).click()
+  await expectPlaying(page, 0)
+  await expect.poll(async () => (await audio(page))!.rate).toBe(0.85)
+
+  const button = bar(page).getByRole('button', { name: /^Speed / })
+  await button.click()
+  const menu = page.getByRole('menu', { name: 'Speed', exact: true })
+  await expect(menu).toBeVisible()
+  await expect(button).toHaveAttribute('aria-expanded', 'true')
+  // Opening the picker does not change playback speed.
+  expect((await audio(page))!.rate).toBe(0.85)
+  await expect(menu.getByRole('menuitemradio', { name: '0.85x', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await menu.getByRole('menuitemradio', { name: '0.95x', exact: true }).click()
+  await expect(menu).toHaveCount(0)
+  await expect.poll(async () => (await audio(page))!.rate).toBe(0.95)
+  expect((await audio(page))!.paused).toBe(false)
+
+  await page.keyboard.press(']')
+  await expect.poll(async () => (await audio(page))!.rate).toBe(1)
+  await page.keyboard.press('[')
+  await expect.poll(async () => (await audio(page))!.rate).toBe(0.95)
+
+  // Both ends remain selectable in the scrolling menu.
+  await button.click()
+  await menu.getByRole('menuitemradio', { name: '0.5x', exact: true }).click()
+  await expect.poll(async () => (await audio(page))!.rate).toBe(0.5)
+  await page.keyboard.press('[')
+  expect((await audio(page))!.rate).toBe(0.5)
+  await button.click()
+  await menu.getByRole('menuitemradio', { name: '3x', exact: true }).click()
+  await expect.poll(async () => (await audio(page))!.rate).toBe(3)
+  await page.keyboard.press(']')
+  expect((await audio(page))!.rate).toBe(3)
+
+  await page.goto('/settings')
+  await expect(speed).toHaveValue('3')
+  await speed.selectOption('0.55')
+  await page.reload()
+  await expect(speed).toHaveValue('0.55')
+})
