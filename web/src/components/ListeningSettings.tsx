@@ -1,9 +1,11 @@
 import { useId } from 'react'
 import { useAudioPlayer, RATES } from '../hooks/useAudioPlayer'
 import { canBoostVolume } from '../hooks/narration'
+import { SleepTimerSettings } from './PlayerMenus'
 import {
   CHAPTER_PAUSES, setChapterPause, setContinueChapters, setReadTitles,
   useChapterPause, useContinueChapters, useReadTitles, useVolumeBoost,
+  setFollowAudio, useFollowAudio,
 } from '../hooks/usePreferences'
 import { t } from '../locales'
 
@@ -69,6 +71,18 @@ export function ListeningOptions() {
         hint={t('listening.continueHint')}
         checked={useContinueChapters()}
         onChange={setContinueChapters}
+      />
+      <Toggle
+        label={t('listening.follow')}
+        hint={t('listening.followHint')}
+        checked={useFollowAudio()}
+        onChange={setFollowAudio}
+      />
+      <SleepTimerSettings
+        timer={player.sleepTimer}
+        start={player.startSleepTimer}
+        extend={player.extendSleepTimer}
+        cancel={player.cancelSleepTimer}
       />
       {canBoostVolume && (
         <Toggle

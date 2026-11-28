@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { RATES, type SleepChoice, type SleepTimer } from '../hooks/useAudioPlayer'
 import { loadSleepChoice } from '../hooks/audioStorage'
 import { t } from '../locales'
@@ -56,13 +57,61 @@ const SLEEP_CHOICES: SleepChoice[] = [5, 15, 30, 45, 60, 'chapter']
 
 const sleepLabel = (c: SleepChoice) => c === 'chapter' ? t('sleep.endOfChapter') : t('sleep.minutes', { count: c })
 
-/** Moon button: picks a sleep timer, then shows its countdown; tapping that cancels or extends it. */
-export function SleepButton({ timer, start, extend, cancel }: {
+interface SleepControls {
   timer: SleepTimer | null
   start: (c: SleepChoice) => void
   extend: (minutes: number) => void
   cancel: () => void
-}) {
+}
+
+/** Same live timer in Settings and the expanded player's Listening panel. */
+export function SleepTimerSettings({ timer, start, extend, cancel }: SleepControls) {
+  const id = useId()
+  const [minutes, setMinutes] = useState(() => {
+    const last = loadSleepChoice()
+    return String(typeof last === 'number' ? last : 20)
+  })
+  const value = Number(minutes)
+  const valid = Number.isInteger(value) && value >= 1 && value <= 1440
+  const selected = timer?.choice ?? 'off'
+  return (
+    <section aria-labelledby={`${id}-title`} className="space-y-2">
+      <h3 id={`${id}-title`} className="text-sm text-text">{t('sleep.title')}</h3>
+      <p className="text-xs text-text-dim">{t('sleep.hint')}</p>
+      <label htmlFor={`${id}-choice`} className="block text-sm text-text-muted">{t('sleep.stopAfter')}</label>
+      <select
+        id={`${id}-choice`}
+        value={selected}
+        onChange={e => e.target.value === 'off' ? cancel() : start(e.target.value === 'chapter' ? 'chapter' : Number(e.target.value))}
+        className="min-h-10 bg-page text-text rounded-lg px-3 py-2 border border-border w-full max-w-xs"
+      >
+        <option value="off">{t('sleep.disabled')}</option>
+        {SLEEP_CHOICES.map(c => <option key={c} value={c}>{sleepLabel(c)}</option>)}
+        {typeof selected === 'number' && !SLEEP_CHOICES.includes(selected) && <option value={selected}>{sleepLabel(selected)}</option>}
+      </select>
+      <form onSubmit={e => { e.preventDefault(); if (valid) start(value) }}>
+        <label htmlFor={`${id}-minutes`} className="block text-sm text-text-muted mb-1">{t('sleep.custom')}</label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input id={`${id}-minutes`} type="number" min="1" max="1440" step="1" required
+            value={minutes} onChange={e => setMinutes(e.target.value)} aria-describedby={`${id}-range`}
+            className="min-h-10 w-24 bg-page text-text rounded-lg px-3 py-2 border border-border" />
+          <button type="submit" disabled={!valid} className="min-h-10 rounded-lg bg-accent text-btn-text px-3 py-2 text-sm disabled:opacity-50">{t('sleep.start')}</button>
+        </div>
+        <p id={`${id}-range`} className="text-xs text-text-dim mt-1">{t('sleep.customHint')}</p>
+      </form>
+      <p className="text-sm text-accent tabular-nums" data-sleep-status="">
+        {timer ? t('sleep.set', { until: timer.choice === 'chapter' ? t('sleep.endOfChapterLower') : formatTime(timer.remaining / 1000) }) : t('sleep.disabled')}
+      </p>
+      {timer && <div className="flex flex-wrap gap-2">
+        {timer.choice !== 'chapter' && [5, 15].map(n => <button key={n} onClick={() => extend(n)} className="min-h-10 px-3 py-2 rounded-lg bg-surface-hover text-sm">{t('sleep.extend', { count: n })}</button>)}
+        <button onClick={cancel} className="min-h-10 px-3 py-2 rounded-lg bg-surface-hover text-sm">{t('sleep.off')}</button>
+      </div>}
+    </section>
+  )
+}
+
+/** Moon button: picks a sleep timer, then shows its countdown; tapping that cancels or extends it. */
+export function SleepButton({ timer, start, extend, cancel }: SleepControls) {
   const [menuOpen, setMenuOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const last = menuOpen ? loadSleepChoice() : null
@@ -99,6 +148,7 @@ export function SleepButton({ timer, start, extend, cancel }: {
               {sleepLabel(c)}
             </MenuItem>
           ))}
+          <Link to="/settings" role="menuitem" tabIndex={-1} onClick={close} className="block min-h-10 whitespace-nowrap px-4 py-2 text-sm text-text-muted hover:bg-surface-hover">{t('sleep.customLink')}</Link>
         </BarMenu>
       )}
     </div>

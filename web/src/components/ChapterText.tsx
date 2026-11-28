@@ -1,5 +1,6 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { useReadAlong } from '../hooks/useAudioPlayer'
+import { setFollowAudio, useFollowAudio } from '../hooks/usePreferences'
 import type { CharRange } from '../hooks/readAlong'
 import { t } from '../locales'
 
@@ -123,11 +124,12 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
   const hl = active && pos?.chapterIdx === chapterIdx ? pos : null
   const containerRef = useRef<HTMLDivElement>(null)
   const [following, setFollowing] = useState(true)
+  const autoFollow = useFollowAudio()
   const hasHighlight = Boolean(hl)
   const hasHighlightRef = useRef(hasHighlight)
   hasHighlightRef.current = hasHighlight
 
-  useEffect(() => { setFollowing(true) }, [chapterIdx])
+  useEffect(() => { setFollowing(true) }, [chapterIdx, autoFollow])
 
   // Text the reader is selecting, in chapter offsets. Re-rendering a paragraph replaces its
   // text nodes and loses the selection, so the read-along stands still in the paragraphs it
@@ -154,11 +156,16 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
 
   // Scrolling by hand stops following until "Follow audio" (or a click on the text)
   useEffect(() => {
-    const stop = () => { if (hasHighlightRef.current) setFollowing(false) }
+    const stop = (e: Event) => {
+      // A panel's scrolling, or a control's arrows, are not navigation of the book text.
+      const el = e.target instanceof Element ? e.target : null
+      if (el?.closest('input, select, textarea, button, a, [contenteditable="true"], [role="menu"], [role="dialog"], [role="region"], aside, [data-reader-top]')) return
+      if (hasHighlightRef.current) setFollowing(false)
+    }
     const onKey = (e: KeyboardEvent) => {
       // Space as play/pause (KeyboardShortcuts) is not a scroll
       if (e.defaultPrevented) return
-      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) stop()
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) stop(e)
     }
     window.addEventListener('wheel', stop, { passive: true })
     window.addEventListener('touchmove', stop, { passive: true })
@@ -187,18 +194,38 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
   // Keep the spoken line in view; scroll only once it leaves the comfortable area
   const target = hl?.word ?? hl?.sentence
   const targetStart = target?.[0] ?? -1
-  useEffect(() => {
+  const keepInView = useRef(() => {})
+  keepInView.current = () => {
     // Nor while the reader selects text: the selection would scroll away
-    if (!following || targetStart < 0 || selectedRef.current) return
+    if (!autoFollow || !following || targetStart < 0 || selectedRef.current) return
     const el = containerRef.current?.querySelector('[data-readalong="word"]')
       ?? containerRef.current?.querySelector('[data-readalong="sentence"]')
     if (!el) return
     const rect = el.getBoundingClientRect()
     const player = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--player-h')) || 0
-    if (rect.top >= topInset() + TOP_MARGIN && rect.bottom <= window.innerHeight - player - BOTTOM_MARGIN) return
+    const viewport = window.visualViewport
+    const top = Math.max(topInset(), viewport?.offsetTop ?? 0) + TOP_MARGIN
+    const bottom = Math.min(window.innerHeight - player, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight)) - BOTTOM_MARGIN
+    if (bottom <= top || (rect.top >= top && rect.bottom <= bottom)) return
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
-  }, [following, targetStart])
+    // Center in the visible reading area, not behind an expanded player or sticky toolbar.
+    window.scrollTo({ top: window.scrollY + rect.top - (top + Math.max(0, bottom - top - rect.height) / 2), behavior: reduce ? 'instant' : 'smooth' })
+  }
+  useEffect(() => { keepInView.current() }, [autoFollow, following, targetStart, selected])
+  useEffect(() => {
+    const check = () => keepInView.current()
+    const observer = new ResizeObserver(check)
+    for (const el of [containerRef.current, document.querySelector('[data-reader-top]'), document.querySelector('[data-audio-player]')]) {
+      if (el) observer.observe(el)
+    }
+    window.addEventListener('resize', check)
+    window.visualViewport?.addEventListener('resize', check)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', check)
+      window.visualViewport?.removeEventListener('resize', check)
+    }
+  }, [hasHighlight])
 
   return (
     <>
@@ -218,9 +245,9 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
           return <Block key={start} text={text} s0={s0} s1={s1} w0={w0} w1={w1} marks={blockMarks[i]} />
         })}
       </div>
-      {hl && !following && (
+      {hl && (!following || !autoFollow) && (
         <button
-          onClick={() => setFollowing(true)}
+          onClick={() => { setFollowAudio(true); setFollowing(true) }}
           data-shortcut="follow"
           aria-keyshortcuts="F"
           title={t('reader.followKeys')}

@@ -12,6 +12,20 @@ pnpm install
 pnpm dev
 ```
 
+## Playback settings
+
+In **Settings → Listening**, **Continue to the next chapter** is on by default:
+playback continues through the book's narrated chapters. Turn it off to stop after
+each chapter. A sleep timer can stop playback earlier: choose a preset, 1–1,440
+custom minutes, or the end of the current chapter. The timer counts down while
+playing, pauses with playback, and can be extended or cancelled. It clears on
+reload; the last duration is remembered for next time. The player bar's moon
+button provides quick timer choices, and its Listening panel has the full controls.
+
+**Scroll with audio** keeps the highlighted words visible by default. Scrolling
+the reading page manually suspends following until **Follow audio** is pressed.
+The preference is saved on the device. Read-along requires published timing data.
+
 ## Tests
 
 In `web/` (CI runs all of them on every push and pull request: `.github/workflows/test.yml`):

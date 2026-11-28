@@ -41,6 +41,7 @@ const TITLES_KEY = 'bp-read-titles'
 const PAUSE_KEY = 'bp-chapter-pause'
 const CONTINUE_KEY = 'bp-continue-chapters'
 const BOOST_KEY = 'bp-volume-boost'
+const FOLLOW_KEY = 'bp-follow-audio'
 
 /** Seconds of silence between chapters on auto-advance; 0 is off. */
 export const CHAPTER_PAUSES = [0, 1.5, 3, 5]
@@ -64,6 +65,10 @@ export function setChapterPause(seconds: number) { write(PAUSE_KEY, seconds) }
 /** Off: stop at the end of each chapter. */
 export function getContinueChapters(): boolean { return readFlag(CONTINUE_KEY, true) }
 export function setContinueChapters(on: boolean) { write(CONTINUE_KEY, on) }
+
+/** Keep the spoken word visible; manual page scrolling can suspend this temporarily. */
+export function getFollowAudio(): boolean { return readFlag(FOLLOW_KEY, true) }
+export function setFollowAudio(on: boolean) { write(FOLLOW_KEY, on) }
 
 /** Louder playback; applied by narration.ts, set through the player (useAudioPlayer). */
 export function getVolumeBoost(): boolean { return readFlag(BOOST_KEY, false) }
@@ -89,4 +94,5 @@ export const useUiScale = () => usePreference(getUiScale)
 export const useReadTitles = () => usePreference(getReadTitles)
 export const useChapterPause = () => usePreference(getChapterPause)
 export const useContinueChapters = () => usePreference(getContinueChapters)
+export const useFollowAudio = () => usePreference(getFollowAudio)
 export const useVolumeBoost = () => usePreference(getVolumeBoost)

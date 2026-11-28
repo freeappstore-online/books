@@ -66,6 +66,7 @@ export function AudioPlayer() {
     // fixed click-catcher, which then covers only the bar and taps outside don't close them
     <div
       ref={trackHeight}
+      data-audio-player=""
       role="region"
       aria-label={t('player.region')}
       className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"

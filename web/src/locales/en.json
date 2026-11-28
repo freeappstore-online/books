@@ -126,7 +126,7 @@
   "listening.pauseOff": "Off",
   "listening.pauseSeconds": "{s} s",
   "listening.continue": "Continue to the next chapter",
-  "listening.continueHint": "When off, playback stops at the end of each chapter.",
+  "listening.continueHint": "On: keep playing narrated chapters through the end of the book. Off: stop after each chapter. A sleep timer can stop playback earlier.",
   "listening.boost": "Volume boost",
   "listening.boostHint": "Louder playback for quiet recordings and small speakers.",
 
@@ -316,5 +316,14 @@
   "seo.ctaRead": "Read free, no account needed",
   "seo.opening": "The opening",
   "seo.about": "About {author}",
-  "seo.browse": "Browse all books"
+  "seo.browse": "Browse all books",
+  "listening.follow": "Scroll with audio",
+  "listening.followHint": "Keep highlighted words in view. Scrolling the reading page by hand pauses following; choose Follow audio to resume.",
+  "sleep.hint": "Counts down while playing and pauses when playback is paused. Stops with a gentle fade. The timer applies to this session and clears when the app reloads.",
+  "sleep.stopAfter": "Stop playback after",
+  "sleep.disabled": "No sleep timer",
+  "sleep.custom": "Custom duration (minutes)",
+  "sleep.customHint": "Enter 1–1,440 whole minutes. Starting a timer replaces the current timer.",
+  "sleep.start": "Start timer",
+  "sleep.customLink": "Custom timer and settings…"
 }

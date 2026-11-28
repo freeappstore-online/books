@@ -294,6 +294,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       halt()
       setPlaying(false)
       if (sleeping) {
+        sleepTimerRef.current = null
         setSleepTimer(null)
         volumeRef.current = 1
       }
@@ -411,17 +412,25 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const startSleepTimer = useCallback((choice: SleepChoice) => {
+    if (choice !== 'chapter' && (!Number.isInteger(choice) || choice < 1 || choice > 1440)) return
     saveSleepChoice(choice)
-    setSleepTimer({ choice, remaining: choice === 'chapter' ? 0 : choice * 60_000 })
+    sleepTimerRef.current = { choice, remaining: choice === 'chapter' ? 0 : choice * 60_000 }
+    setSleepTimer(sleepTimerRef.current)
     setVolume(1)
   }, [setVolume])
 
   const extendSleepTimer = useCallback((minutes: number) => {
-    setSleepTimer(t => t && t.choice !== 'chapter' ? { ...t, remaining: t.remaining + minutes * 60_000 } : t)
+    if (!Number.isFinite(minutes) || minutes <= 0) return
+    const t = sleepTimerRef.current
+    if (t && t.choice !== 'chapter') {
+      sleepTimerRef.current = { ...t, remaining: t.remaining + minutes * 60_000 }
+      setSleepTimer(sleepTimerRef.current)
+    }
     setVolume(1)
   }, [setVolume])
 
   const cancelSleepTimer = useCallback(() => {
+    sleepTimerRef.current = null
     setSleepTimer(null)
     setVolume(1)
   }, [setVolume])
@@ -430,7 +439,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   // throttled timers on a locked screen still end it on time.
   const sleepChoice = sleepTimer?.choice
   useEffect(() => {
-    if (sleepChoice === undefined || !playing) return
+    if (sleepChoice === undefined || !playing || loading) return
     let last = Date.now()
     const id = setInterval(() => {
       const now = Date.now()
@@ -450,6 +459,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       const remaining = t.remaining - elapsed
       if (remaining <= 0) {
         pause()
+        sleepTimerRef.current = null
         setSleepTimer(null)
         setVolume(1)
         return
@@ -460,7 +470,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       setSleepTimer(sleepTimerRef.current)
     }, 1000)
     return () => clearInterval(id)
-  }, [sleepChoice, playing, pause, currentChapter, setVolume])
+  }, [sleepChoice, playing, loading, pause, currentChapter, setVolume])
 
   // Media Session API — lock screen controls + background audio metadata
   useEffect(() => {

@@ -126,7 +126,7 @@
   "listening.pauseOff": "Sin pausa",
   "listening.pauseSeconds": "{s} s",
   "listening.continue": "Pasar al siguiente capítulo",
-  "listening.continueHint": "Si está desactivado, la reproducción se detiene al final de cada capítulo.",
+  "listening.continueHint": "Activado: reproduce los capítulos narrados hasta el final del libro. Desactivado: se detiene después de cada capítulo. El temporizador puede detener la reproducción antes.",
   "listening.boost": "Subir el volumen",
   "listening.boostHint": "Más volumen para grabaciones bajas y altavoces pequeños.",
 
@@ -316,5 +316,14 @@
   "seo.ctaRead": "Lee gratis, sin crear una cuenta",
   "seo.opening": "El comienzo",
   "seo.about": "Sobre {author}",
-  "seo.browse": "Ver todos los libros"
+  "seo.browse": "Ver todos los libros",
+  "listening.follow": "Desplazar el texto con el audio",
+  "listening.followHint": "Mantiene visibles las palabras resaltadas. Al desplazar la página manualmente, el seguimiento se pausa; pulsa Seguir el audio para reanudarlo.",
+  "sleep.hint": "La cuenta atrás avanza durante la reproducción y se pausa al pausarla. El volumen baja suavemente antes de detenerse. El temporizador se borra al recargar la aplicación.",
+  "sleep.stopAfter": "Detener la reproducción después de",
+  "sleep.disabled": "Sin temporizador",
+  "sleep.custom": "Duración personalizada (minutos)",
+  "sleep.customHint": "Introduce entre 1 y 1440 minutos enteros. Al iniciar un temporizador, se sustituye el actual.",
+  "sleep.start": "Iniciar temporizador",
+  "sleep.customLink": "Temporizador personalizado y ajustes…"
 }
