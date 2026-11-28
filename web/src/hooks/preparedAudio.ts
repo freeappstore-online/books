@@ -31,7 +31,9 @@ let community: Record<string, CommunityChapter> = {}
  * none, and play them from the platform from now on.
  */
 export function addCommunity(manifest: PreparedManifest, raw: unknown) {
-  community = { ...community, ...mergeCommunity(manifest, VOICE, raw, CATALOG) }
+  // Each load is a complete snapshot. Old routes must disappear when an artifact is
+  // withdrawn or the dataset gains its own recording (and its own timing offsets).
+  community = mergeCommunity(manifest, VOICE, raw, CATALOG)
 }
 
 const communityChapter = (slug: string, chapterIdx: number, voice: string) =>

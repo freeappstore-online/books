@@ -114,6 +114,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory)
   const [sleepTimer, setSleepTimer] = useState<SleepTimer | null>(null)
   const sleepTimerRef = useRef(sleepTimer)
+  const sleepLastTickRef = useRef(0)
   sleepTimerRef.current = sleepTimer
   // Playback volume, lowered by the sleep timer's fade
   const volumeRef = useRef(1)
@@ -414,6 +415,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const startSleepTimer = useCallback((choice: SleepChoice) => {
     if (choice !== 'chapter' && (!Number.isInteger(choice) || choice < 1 || choice > 1440)) return
     saveSleepChoice(choice)
+    // Restarting the same choice does not rerun the interval effect. Its clock must
+    // restart here too, especially when background timer callbacks were delayed.
+    sleepLastTickRef.current = Date.now()
     sleepTimerRef.current = { choice, remaining: choice === 'chapter' ? 0 : choice * 60_000 }
     setSleepTimer(sleepTimerRef.current)
     setVolume(1)
@@ -440,11 +444,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const sleepChoice = sleepTimer?.choice
   useEffect(() => {
     if (sleepChoice === undefined || !playing || loading) return
-    let last = Date.now()
+    sleepLastTickRef.current = Date.now()
     const id = setInterval(() => {
       const now = Date.now()
-      const elapsed = now - last
-      last = now
+      const elapsed = Math.max(0, now - sleepLastTickRef.current)
+      sleepLastTickRef.current = now
       const t = sleepTimerRef.current
       if (!t) return
       if (t.choice === 'chapter') {

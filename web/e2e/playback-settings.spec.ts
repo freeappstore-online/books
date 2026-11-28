@@ -86,8 +86,9 @@ for (const width of [390, 1200]) {
         const rect = el.getBoundingClientRect()
         const top = document.querySelector('[data-reader-top]')!.getBoundingClientRect().bottom
         const bottom = document.querySelector('[data-audio-player]')!.getBoundingClientRect().top
-        return rect.top >= top && rect.bottom <= bottom
-      })).toBe(true)
+        // A distance makes a failure report how far the word is obscured.
+        return Math.min(rect.top - top, bottom - rect.bottom)
+      })).toBeGreaterThanOrEqual(0)
     }
     await expectVisible()
     await bar(page).getByRole('button', { name: 'Show chapters' }).click()
@@ -126,4 +127,41 @@ test('scroll preference persists and Follow audio explicitly turns it back on', 
   await page.locator('[data-shortcut="follow"]').click()
   await expect.poll(() => page.evaluate(() => localStorage.getItem('bp-follow-audio'))).toBe('1')
   await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(500)
+})
+
+test('restarting the same timer duration starts a fresh countdown between ticks', async ({ page }) => {
+  let now = Date.now()
+  await page.clock.setFixedTime(now)
+  await page.goto(`/read/${SLUG}`)
+  await headerPlay(page).click()
+  await expectPlaying(page, 0)
+  await bar(page).getByRole('button', { name: 'Sleep timer', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Custom timer and settings…' }).click()
+  const sleep = sleepSettings(page)
+  await sleep.getByLabel('Custom duration (minutes)').fill('1')
+  await sleep.getByRole('button', { name: 'Start timer' }).click()
+  // Replace a running timer before the next interval tick (as after timer throttling).
+  await sleep.getByRole('button', { name: 'Start timer' }).evaluate(button => {
+    const originalNow = Date.now
+    const later = Date.now() + 55_000
+    Date.now = () => later
+    ;(button as HTMLButtonElement).click()
+    Date.now = originalNow
+  })
+  await page.clock.setFixedTime(now += 55_000)
+  await page.waitForTimeout(1200)
+  await expect(sleep.locator('[data-sleep-status]')).toHaveText('Sleep timer: 1:00')
+  await page.clock.setFixedTime(now += 10_000)
+  await expect(sleep.locator('[data-sleep-status]')).toHaveText('Sleep timer: 0:50')
+})
+
+test('Page Down pauses following when a page button has focus', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto(`/read/${SLUG}`)
+  await headerPlay(page).click()
+  await expectPlaying(page, 0)
+  await expect(page.locator('[data-readalong="word"]').first()).toBeVisible()
+  await page.locator('header').getByRole('button', { name: 'Pause', exact: true }).focus()
+  await page.keyboard.press('PageDown')
+  await expect(page.locator('[data-shortcut="follow"]')).toBeVisible()
 })

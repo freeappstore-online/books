@@ -165,7 +165,12 @@ export function ChapterText({ content, chapterIdx, active, className, style, tit
     const onKey = (e: KeyboardEvent) => {
       // Space as play/pause (KeyboardShortcuts) is not a scroll
       if (e.defaultPrevented) return
-      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) stop(e)
+      const el = e.target instanceof Element ? e.target : null
+      // A focused page button still lets PageDown/Home/etc. scroll the page.
+      // Inputs and independently scrolling panels keep their own navigation keys.
+      if (el?.closest('input, select, textarea, [contenteditable="true"], [role="menu"], [role="dialog"], dialog, [data-audio-player], aside')) return
+      if (e.key === ' ' && el?.closest('button, a, [role="button"]')) return
+      if (hasHighlightRef.current && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) setFollowing(false)
     }
     window.addEventListener('wheel', stop, { passive: true })
     window.addEventListener('touchmove', stop, { passive: true })

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { CATALOG } from '../../src/data/catalog'
 import {
@@ -106,6 +106,7 @@ describe('manifest contract (books#37)', () => {
 })
 
 describe('community narration (books#66)', () => {
+  beforeEach(() => addCommunity({}, null))
   const api = 'https://api.freeappstore.online/v1/apps/books/generation/artifacts'
   const artifact = (key: string, durationMs: number | null, meta = true) => ({
     key, jobId: key, url: `${api}/${key}?v=1`, ...(meta ? { metaUrl: `${api}/${key}/meta?v=1` } : {}), durationMs,
@@ -144,5 +145,24 @@ describe('community narration (books#66)', () => {
     expect(preparedUrl(SLUG, 0)).toContain('huggingface.co')
     expect(chapterHasTimings(extras, SLUG, 0)).toBe(false)
     expect(preparedUrl(SLUG, 1, 'other_voice')).toContain('huggingface.co')
+  })
+
+  it('replaces community routing when the dataset takes over a chapter', () => {
+    const raw = { artifacts: [artifact(`${SLUG}/1`, 30_000)] }
+    addCommunity({}, raw)
+    expect(preparedUrl(SLUG, 1)).toContain(api)
+    addCommunity({ [VOICE]: { [SLUG]: [10, 31] } }, raw)
+    expect(preparedUrl(SLUG, 1)).toContain('huggingface.co')
+    expect(preparedTimingsUrl(SLUG, 1)).toContain('huggingface.co')
+    expect(chapterHasTimings({ [VOICE]: { [SLUG]: { timings: false } } }, SLUG, 1)).toBe(false)
+  })
+
+  it('drops withdrawn community artifacts on the next manifest snapshot', () => {
+    addCommunity({}, { artifacts: [artifact(`${SLUG}/1`, 30_000)] })
+    expect(preparedUrl(SLUG, 1)).toContain(api)
+    const refreshed: PreparedManifest = {}
+    addCommunity(refreshed, { artifacts: [] })
+    expect(chapterSeconds(refreshed, SLUG, 1)).toBeNull()
+    expect(preparedUrl(SLUG, 1)).toContain('huggingface.co')
   })
 })
